@@ -407,3 +407,122 @@ def test_old_firmware_detected():
             tplink_mod.TPLinkDriver(host, ADMIN).login()
     finally:
         srv.shutdown()
+
+
+# ------------------- TP-Link firmware "/cgi?" sin cifrado (TL-WR840N real, TR-098)
+import base64 as _b64
+import re as _re
+
+from wifichanger import detect as _detect
+from wifichanger.drivers.tplink_cgi import TPLinkCgiDriver
+
+
+class FakeWR840N(BaseHTTPRequestHandler):
+    """Imita las respuestas observadas en el panel de un TL-WR840N."""
+    def log_message(self, *a): pass
+
+    def do_GET(self):
+        self.send_response(200); self.end_headers()
+        self.wfile.write(b'<html><script src="/js/oid_str.js"></script><script src="/js/lib.js"></script>'
+                         b'<script>var modelName="TL-WR840N";</script></html>')
+
+    def do_POST(self):
+        st = FakeWR840N.st
+        body = self.rfile.read(int(self.headers.get("Content-Length", 0))).decode()
+        good = "Basic " + _b64.b64encode(f"admin:{ADMIN}".encode()).decode()
+        if self.headers.get("Cookie") != f"Authorization={good}" or not self.headers.get("Referer"):
+            self.send_response(403); self.end_headers(); return
+        types = urlparse(self.path).query.split("&")
+        blocks = _re.split(r"(?=\[[A-Z_0-9]+#)", body)
+        blocks = [b for b in blocks if b.strip()]
+        out = []
+        for t, blk in zip(types, blocks):
+            head, *lines = blk.split("\r\n")
+            m = _re.match(r"\[([A-Z_0-9]+)#([\d,]+)#([\d,]+)\](\d+),(\d+)", head)
+            oid, stack, pstack, idx = m.group(1), m.group(2), m.group(3), m.group(4)
+            attrs = dict(l.split("=", 1) for l in lines if "=" in l)
+            st["log"].append((t, oid, stack, pstack, attrs))
+            if t == "5" and oid == "LAN_WLAN":
+                out.append(f"[1,1,0,0,0,0]{idx}\nname=wlan0\nSSID=Casa840\nstatus=Up\nX_TP_Band=2.4GHz\n"
+                           f"BeaconType={st['beacon']}\nX_TP_MACAddressControlRule={st['rule']}\n"
+                           f"MACAddressControlEnabled={st['acl_en']}")
+                out.append(f"[1,2,0,0,0,0]{idx}\nname=wlan5\nSSID=\nstatus=Disabled")
+            elif t == "5" and oid == "LAN_HOST_ENTRY":
+                out.append(f"[1,1,1,0,0,0]{idx}\nMACAddress=AA:AA:AA:AA:AA:01\nhostName=Telefono\nIPAddress=192.168.60.10")
+                out.append(f"[1,1,2,0,0,0]{idx}\nMACAddress=BB:BB:BB:BB:BB:02\nhostName=Vecino\nIPAddress=192.168.60.11")
+            elif t == "6" and oid == "LAN_WLAN_ASSOC_DEV":
+                out.append(f"[1,1,0,1,0,0]{idx}\nAssociatedDeviceMACAddress=BB:BB:BB:BB:BB:02\nX_TP_HostName=Vecino")
+            elif t == "6" and oid == "LAN_WLAN_MACTABLEENTRY":
+                for n, e in st["table"].items():
+                    out.append(f"[1,1,0,{n},0,0]{idx}\nEnabled={e['Enabled']}\nMACAddress={e['MACAddress']}\n"
+                               f"Description={e['Description']}\nHostName={e['HostName']}")
+            elif t == "2" and oid == "LAN_WLAN":
+                for k, v in attrs.items():
+                    if k == "X_TP_PreSharedKey": st["psk"] = v
+                    if k == "BeaconType": st["beacon"] = v
+                    if k == "X_TP_MACAddressControlRule": st["rule"] = v
+                    if k == "MACAddressControlEnabled": st["acl_en"] = v
+            elif t == "3" and oid == "LAN_WLAN_MACTABLEENTRY":
+                n = max(st["table"], default=0) + 1
+                st["table"][n] = dict(attrs)
+                out.append(f"[1,1,0,{n},0,0]{idx}")
+            elif t == "4" and oid == "LAN_WLAN_MACTABLEENTRY":
+                st["table"].pop(int(stack.split(",")[3]), None)
+        self.send_response(200); self.end_headers()
+        self.wfile.write(("\n".join(out) + "\n[error]0").encode())
+
+
+@pytest.fixture
+def wr840n():
+    FakeWR840N.st = {"beacon": "WPAand11i", "rule": "deny", "acl_en": "0", "psk": "vieja1234",
+                     "table": {}, "log": []}
+    srv = HTTPServer(("127.0.0.1", 0), FakeWR840N)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{srv.server_port}"
+    srv.shutdown()
+
+
+def test_wr840n_detected_and_wifi(wr840n):
+    d = _detect.get_driver(wr840n, ADMIN)
+    assert isinstance(d, TPLinkCgiDriver) and d.brand == "TP-Link"
+    with d:
+        nets = d.get_wifi_networks()
+        assert [(n.ssid, n.band, n.enabled) for n in nets] == [("Casa840", Band.B24, True)]
+        d.set_wifi_passwords([Band.B24], "Nueva&Clave=99")
+    assert FakeWR840N.st["psk"] == "Nueva&Clave=99"
+    sets = [l for l in FakeWR840N.st["log"] if l[0] == "2"]
+    assert sets[-1][2] == "1,1,0,0,0,0" and list(sets[-1][4]) == ["X_TP_PreSharedKey"]
+
+
+def test_wr840n_bad_password(wr840n):
+    with pytest.raises(AuthError):
+        _detect.get_driver(wr840n, "mala").login()
+
+
+def test_wr840n_clients_block_unblock(wr840n):
+    conn = service.Connection(wr840n, None, "admin", ADMIN)
+    service.connect(conn)
+    assert conn.brand_key == "tplink"
+    devs = {x.mac: x for x in service.list_clients(conn)}
+    vecino = devs["bb:bb:bb:bb:bb:02"]
+    assert vecino.connection == "2.4GHz" and not vecino.blocked
+    assert devs["aa:aa:aa:aa:aa:01"].connection == "Cable/inactivo"
+
+    service.set_blocked(conn, vecino, True)
+    st = FakeWR840N.st
+    assert st["acl_en"] == "1" and st["rule"] == "deny"
+    assert [e["MACAddress"] for e in st["table"].values()] == ["BB:BB:BB:BB:BB:02"]
+    assert next(x for x in service.list_clients(conn) if x.mac == vecino.mac).blocked
+
+    service.set_blocked(conn, vecino, False)
+    assert st["table"] == {}
+    assert not next(x for x in service.list_clients(conn) if x.mac == vecino.mac).blocked
+
+
+def test_wr840n_whitelist_refused(wr840n):
+    FakeWR840N.st.update(rule="allow", acl_en="1")
+    conn = service.Connection(wr840n, "tplink", "admin", ADMIN)
+    vecino = next(x for x in service.list_clients(conn) if x.name == "Vecino")
+    with pytest.raises(NotSupportedError, match="Permitir"):
+        service.set_blocked(conn, vecino, True)
+    assert FakeWR840N.st["table"] == {}

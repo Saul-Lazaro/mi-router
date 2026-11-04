@@ -80,4 +80,18 @@ def get_driver(host: str | None, admin_password: str, brand: str | None = None,
     brand = brand or detect_brand(host)
     if brand not in DRIVERS:
         raise RouterError(f"Marca no reconocida en {host}. Usa --marca {'/'.join(DRIVERS)}.")
+    if brand == "tplink":
+        return _tplink_driver(host, admin_password, username)
     return DRIVERS[brand](host, admin_password, username=username)
+
+
+def _tplink_driver(host: str, admin_password: str, username: str) -> RouterDriver:
+    """TP-Link tiene varios firmwares: elige la implementación según su página de inicio."""
+    from .drivers.tplink_cgi import TPLinkCgiDriver
+    url = host if host.startswith("http") else f"http://{host}"
+    try:
+        html = requests.get(url, timeout=8, allow_redirects=True).text
+    except requests.RequestException as e:
+        raise RouterError(f"No se pudo conectar con {url}: {e}") from e
+    cls = TPLinkCgiDriver if TPLinkCgiDriver.looks_like(html) else TPLinkDriver
+    return cls(host, admin_password, username=username)

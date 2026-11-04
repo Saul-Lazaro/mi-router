@@ -47,7 +47,7 @@ class TPLinkDriver(RouterDriver):
     def matches(cls, homepage_html: str, headers: dict) -> bool:
         text = (homepage_html + " " + " ".join(f"{k} {v}" for k, v in headers.items())).lower()
         return any(s in text for s in ("tp-link", "tplink", "mercusys", "/webpages/", "tplinkwifi.net",
-                                       "cgi_gdpr", "cgi/getparm", "userrpm", "loginrpm"))
+                                       "cgi_gdpr", "cgi/getparm", "userrpm", "loginrpm", "oid_str.js"))
 
     # --- sesión -------------------------------------------------------------
     def _homepage(self) -> str:
