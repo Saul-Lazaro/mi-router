@@ -20,14 +20,22 @@ def poke(dt):
     try:
         app = main.App.get_running_app()
         root = app.root
-        # pantalla de acceso: escribir la contraseña y elegir marca
-        root.ids.admin.focus = True
-        root.ids.admin.insert_text("clave123")
-        assert root.ids.admin.text == "clave123", root.ids.admin.text
+        # pantalla de acceso: escribir la contraseña (con puntos), mostrarla y elegir marca
+        f = root.ids.admin
+        f.focus = True
+        for ch in "clave123":
+            f.insert_text(ch)
+        assert f.secret == "clave123", f.secret
+        assert f.text == "\u2022" * 8, f.text
+        f.do_backspace()
+        assert f.secret == "clave12", f.secret
         root.ids.admin_show.active = True
-        assert root.ids.admin.password is False
+        assert f.text == "clave12", f.text
+        f.insert_text("3")
+        assert f.secret == "clave123", f.secret
+        f.focus = False
+        root.choose_brand()
         root.brand_choice = "TP-Link"
-        root.ids.admin.focus = False
         root._show_wait("Accediendo al equipo…")
         root._progress("Buscando el router…")
         root._wait.dismiss()

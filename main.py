@@ -14,6 +14,7 @@ from kivy.uix.checkbox import CheckBox
 from kivy.uix.label import Label
 from kivy.core.clipboard import Clipboard
 from kivy.uix.popup import Popup
+from kivy.uix.textinput import TextInput
 from kivy.utils import escape_markup
 
 from wifichanger.base import RouterError
@@ -53,19 +54,22 @@ KV = """
     separator_height: dp(3)
     overlay_color: 0, 0.12, 0.05, 0.55
 
-<Field@TextInput>:
+<Field>:
     multiline: False
     write_tab: False
     size_hint_y: None
-    height: dp(52)
-    font_size: "16sp"
-    padding: [dp(14), dp(15)]
+    height: dp(44)
+    font_size: "15sp"
+    padding: [dp(12), dp(11)]
     background_normal: ""
     background_active: ""
     background_color: 1, 1, 1, 1
     foreground_color: TEXT
     hint_text_color: MUTED
     cursor_color: GREEN
+    halign: "center"
+    keyboard_suggestions: False
+    input_type: "text"
     canvas.after:
         Color:
             rgba: GREEN if self.focus else (0.80, 0.88, 0.78, 1)
@@ -98,8 +102,8 @@ KV = """
 
 <BigButton@RoundButton>:
     size_hint_y: None
-    height: dp(56)
-    font_size: "18sp"
+    height: dp(50)
+    font_size: "17sp"
 
 <SoftButton@RoundButton>:
     bg: 0.86, 0.93, 0.83, 1
@@ -127,10 +131,10 @@ KV = """
 
 <FieldLabel@Label>:
     size_hint_y: None
-    height: dp(26)
+    height: dp(20)
     color: 0.106, 0.420, 0.208, 1
     bold: True
-    font_size: "15sp"
+    font_size: "14sp"
     halign: "center"
     valign: "bottom"
     text_size: self.size
@@ -143,8 +147,8 @@ KV = """
     orientation: "vertical"
     size_hint_y: None
     height: self.minimum_height
-    padding: dp(16), dp(16)
-    spacing: dp(12)
+    padding: dp(16), dp(14)
+    spacing: dp(10)
     canvas.before:
         Color:
             rgba: 0, 0.25, 0.1, 0.06
@@ -248,8 +252,8 @@ KV = """
         do_scroll_x: False
         BoxLayout:
             orientation: "vertical"
-            padding: dp(14), dp(12), dp(14), dp(20)
-            spacing: dp(14)
+            padding: max(dp(16), (self.width - dp(430)) / 2), (dp(12) if root.connected else dp(40)), max(dp(16), (self.width - dp(430)) / 2), dp(20)
+            spacing: dp(12)
             size_hint_y: None
             height: self.minimum_height
 
@@ -264,15 +268,15 @@ KV = """
                     text: "Acceder al router"
                     color: DARK
                     bold: True
-                    font_size: "22sp"
+                    font_size: "20sp"
                     size_hint_y: None
-                    height: dp(36)
+                    height: dp(30)
                     halign: "center"
                     text_size: self.width, None
                 Label:
-                    text: "Conéctate al Wi‑Fi del router y escribe los datos de acceso de su panel."
+                    text: "Conéctate al Wi‑Fi del router y escribe los datos de su panel."
                     color: MUTED
-                    font_size: "14sp"
+                    font_size: "13sp"
                     halign: "center"
                     size_hint_y: None
                     text_size: self.width, None
@@ -294,15 +298,15 @@ KV = """
                     hint_text: "normalmente admin"
                 FieldLabel:
                     text: "Contraseña"
-                Field:
+                PasswordField:
                     id: admin
                     halign: "center"
-                    password: not admin_show.active
+                    masked: not admin_show.active
                     hint_text: "contraseña del panel del router"
                     on_text_validate: root.do_connect()
                 AnchorLayout:
                     size_hint_y: None
-                    height: dp(36)
+                    height: dp(30)
                     BoxLayout:
                         size_hint_x: None
                         width: dp(210)
@@ -319,23 +323,32 @@ KV = """
                             valign: "middle"
                 FieldLabel:
                     text: "Marca del router"
-                BoxLayout:
+                Button:
+                    text: root.brand_choice + "   \u25BE"
                     size_hint_y: None
-                    height: dp(48)
-                    spacing: dp(8)
-                    BrandButton:
-                        text: "Detectar"
-                        state: "down"
-                        on_state: if self.state == "down": root.brand_choice = "Detectar marca"
-                    BrandButton:
-                        text: "TP-Link"
-                        on_state: if self.state == "down": root.brand_choice = "TP-Link"
-                    BrandButton:
-                        text: "Tenda"
-                        on_state: if self.state == "down": root.brand_choice = "Tenda"
+                    height: dp(44)
+                    font_size: "15sp"
+                    bold: True
+                    color: DARK
+                    background_normal: ""
+                    background_down: ""
+                    background_color: 0, 0, 0, 0
+                    on_release: root.choose_brand()
+                    canvas.before:
+                        Color:
+                            rgba: 1, 1, 1, 1
+                        RoundedRectangle:
+                            pos: self.pos
+                            size: self.size
+                            radius: [dp(12)]
+                        Color:
+                            rgba: 0.80, 0.88, 0.78, 1
+                        Line:
+                            width: dp(1)
+                            rounded_rectangle: (self.x, self.y, self.width, self.height, dp(12))
                 Widget:
                     size_hint_y: None
-                    height: dp(4)
+                    height: dp(2)
                 BigButton:
                     text: "Accediendo…" if root.busy else "Conectar"
                     disabled: root.busy
@@ -365,13 +378,11 @@ KV = """
                 Card:
                     Section:
                         text: "Nueva clave"
-                    Field:
+                    PasswordField:
                         id: new_pw
-                        password: True
                         hint_text: "Nueva clave Wi‑Fi (8 a 63 caracteres)"
-                    Field:
+                    PasswordField:
                         id: confirm
-                        password: True
                         hint_text: "Repite la nueva clave"
                     BoxLayout:
                         size_hint_y: None
@@ -380,7 +391,7 @@ KV = """
                             size_hint_x: None
                             width: dp(44)
                             color: DARK
-                            on_active: new_pw.password = confirm.password = not self.active
+                            on_active: new_pw.masked = confirm.masked = not self.active
                         Label:
                             text: "Mostrar clave"
                             color: TEXT
@@ -435,7 +446,7 @@ KV = """
                 Image:
                     source: "logo.png"
                     size_hint_y: None
-                    height: dp(240)
+                    height: dp(150)
                     allow_stretch: True
                     keep_ratio: True
                 Label:
@@ -445,6 +456,47 @@ KV = """
                     size_hint_y: None
                     height: dp(18)
 """
+
+
+class Field(TextInput):
+    """Campo de texto con el estilo de la app (ver regla <Field> en el KV)."""
+
+
+class PasswordField(Field):
+    """Contraseña con puntos dibujados por la app.
+
+    En varios teclados de Android el modo `password` nativo de Kivy no deja escribir;
+    aquí el campo es de texto normal y la clave real se guarda en `secret`."""
+    secret = StringProperty("")
+    masked = BooleanProperty(True)
+    MASK = "\u2022"
+
+    def __init__(self, **kw):
+        self._sync = False
+        super().__init__(**kw)
+        self.bind(text=self._on_text_changed, masked=lambda *_: self._refresh())
+
+    def _refresh(self):
+        self._sync = True
+        self.text = (self.MASK * len(self.secret)) if self.masked else self.secret
+        self.cursor = (len(self.text), 0)
+        self._sync = False
+
+    def _on_text_changed(self, *_):
+        if self._sync:
+            return
+        if not self.masked:
+            self.secret = self.text
+            return
+        # Edición con máscara: lo que no sea punto es texto nuevo; si se acortó, se borró al final
+        new = self.text.replace(self.MASK, "")
+        kept = min(self.text.count(self.MASK), len(self.secret))
+        self.secret = self.secret[:kept] + new
+        self._refresh()
+
+    def clear(self):
+        self.secret = ""
+        self._refresh()
 
 
 class RoundButton(Button):
@@ -620,9 +672,25 @@ class Root(BoxLayout):
         popup.open()
 
     # --- conexión ----------------------------------------------------------
+    def choose_brand(self):
+        """Combo desplegable de marca (lista en ventana emergente: funciona con cualquier toque)."""
+        box = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(8))
+        popup = Popup(title="Marca del router", content=box, size_hint=(0.8, None), height=dp(290))
+        for option in BRAND_KEYS:
+            btn = RoundButton(text=option, size_hint_y=None, height=dp(48), font_size="16sp",
+                              bg=list(GREEN) if option == self.brand_choice else [0.86, 0.93, 0.83, 1],
+                              color=(1, 1, 1, 1) if option == self.brand_choice else DARK)
+
+            def pick(_b, value=option):
+                self.brand_choice = value
+                popup.dismiss()
+            btn.bind(on_release=pick)
+            box.add_widget(btn)
+        popup.open()
+
     def do_connect(self):
         conn = Connection(self.ids.host.text, BRAND_KEYS[self.brand_choice],
-                          self.ids.user.text, self.ids.admin.text)
+                          self.ids.user.text, self.ids.admin.secret)
         self._run(lambda: connect(conn, self._progress), lambda nets: self._on_connected(conn, nets),
                   "Accediendo al equipo…")
 
@@ -641,7 +709,7 @@ class Root(BoxLayout):
     def disconnect(self):
         self.connected = False
         self.conn = None
-        self.ids.admin.text = ""
+        self.ids.admin.clear()
         self.ids.nets.clear_widgets()
         self.ids.devices.clear_widgets()
         self.checks = []
@@ -677,7 +745,7 @@ class Root(BoxLayout):
 
     def do_change(self):
         selected = [n for cb, n in self.checks if cb.active]
-        new_pw, confirm = self.ids.new_pw.text, self.ids.confirm.text
+        new_pw, confirm = self.ids.new_pw.secret, self.ids.confirm.secret
         conn = self.conn
         names = ", ".join(n.ssid for n in selected) or "—"
 
@@ -693,7 +761,8 @@ class Root(BoxLayout):
             go()  # deja que la validación muestre el error
 
     def _changed(self, message, networks, new_pw):
-        self.ids.new_pw.text = self.ids.confirm.text = ""
+        self.ids.new_pw.clear()
+        self.ids.confirm.clear()
         self._msg(message, ok=True)
         names = ", ".join(f"{n.ssid} ({n.band.value})" for n in networks)
         self._password_popup("Clave cambiada", message, [(f"Nueva clave de {names}", new_pw)])
