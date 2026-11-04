@@ -1,4 +1,4 @@
-"""App Android (Kivy) para routers TP-Link y Tenda:
+"""Maxs Wifi — app Android (Kivy) para routers TP-Link y Tenda:
 cambiar la clave Wi‑Fi, ver quién está conectado y bloquear o desbloquear equipos."""
 import threading
 
@@ -76,12 +76,22 @@ KV = """
     BoxLayout:
         orientation: "vertical"
         size_hint_y: None
-        height: dp(76)
+        height: dp(84)
         padding: dp(18), dp(8)
-        Label:
-            text: "Mi Router"
-            font_size: "24sp"
-            bold: True
+        BoxLayout:
+            spacing: dp(10)
+            Image:
+                source: "icon.png"
+                size_hint_x: None
+                width: dp(44)
+                allow_stretch: True
+            Label:
+                text: "Maxs Wifi"
+                font_size: "24sp"
+                bold: True
+                text_size: self.size
+                halign: "left"
+                valign: "middle"
         Label:
             text: (root.brand_name + " · " + root.host_shown) if root.connected else "TP-Link · Tenda"
             color: 0.6, 0.6, 0.65, 1
@@ -523,8 +533,8 @@ class Root(BoxLayout):
         self._run(work, ok, "Bloqueando…" if block else "Desbloqueando…")
 
 
-class MiRouterApp(App):
-    title = "Mi Router"
+class MaxsWifiApp(App):
+    title = "Maxs Wifi"
 
     def build(self):
         Window.clearcolor = BG
@@ -533,4 +543,4 @@ class MiRouterApp(App):
 
 
 if __name__ == "__main__":
-    MiRouterApp().run()
+    MaxsWifiApp().run()

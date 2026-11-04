@@ -53,6 +53,8 @@ jobs:
             ~/.buildozer
             .buildozer
           key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            buildozer-${{ runner.os }}-
 
       - name: Compilar APK (debug)
         run: buildozer android debug
