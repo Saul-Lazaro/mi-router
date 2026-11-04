@@ -109,14 +109,15 @@ class TPLinkDriver(RouterDriver):
 
     def _gdpr_networks(self) -> list[WifiNetwork]:
         act = self._client.ActItem
-        _, values = self._client.req_act([act(act.GL, "LAN_WLAN", attrs=["enable", "SSID", "X_TP_Band"])])
+        _, values = self._client.req_act([act(act.GL, "LAN_WLAN", attrs=["enable", "SSID", "X_TP_Band", "X_TP_PreSharedKey"])])
         items = values if isinstance(values, list) else [values]
         nets = []
         for i, item in enumerate(i for i in items if isinstance(i, dict)):
             band_txt = str(item.get("X_TP_Band", "")).lower()
             band = Band.B5 if "5" in band_txt else Band.B24 if band_txt else (Band.B24, Band.B5)[min(i, 1)]
             nets.append(WifiNetwork(band, item.get("SSID", "") or "(sin nombre)",
-                                    str(item.get("enable", "1")) == "1", "WPA/WPA2"))
+                                    str(item.get("enable", "1")) == "1", "WPA/WPA2",
+                                    password=item.get("X_TP_PreSharedKey")))
         return nets
 
     def _gdpr_set_password(self, bands: list[Band], new_password: str) -> None:
@@ -154,7 +155,7 @@ class TPLinkDriver(RouterDriver):
                     if st is None or st.ssid is None:
                         continue
                     nets.append(WifiNetwork(band, st.ssid, bool(st.enable),
-                                            st.encryption or "", guest))
+                                            st.encryption or "", guest, password=getattr(st, "psk_key", None)))
             if nets:
                 return nets
         # Modelos sin get_wifi: solo sabemos si cada banda está activa.

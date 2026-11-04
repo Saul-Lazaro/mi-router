@@ -92,7 +92,7 @@ class TendaDriver(RouterDriver):
         for band, f in FIELDS.items():
             if f["ssid"] in cfg:
                 nets.append(WifiNetwork(band, cfg[f["ssid"]], str(cfg.get(f["enable"], "1")) == "1",
-                                        cfg.get(f["security"], "")))
+                                        cfg.get(f["security"], ""), password=cfg.get(f["pwd"], "")))
         return nets
 
     # --- escritura ----------------------------------------------------------

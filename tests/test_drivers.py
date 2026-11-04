@@ -444,7 +444,7 @@ class FakeWR840N(BaseHTTPRequestHandler):
             st["log"].append((t, oid, stack, pstack, attrs))
             if t == "5" and oid == "LAN_WLAN":
                 out.append(f"[1,1,0,0,0,0]{idx}\nname=wlan0\nSSID=Casa840\nstatus=Up\nX_TP_Band=2.4GHz\n"
-                           f"BeaconType={st['beacon']}\nX_TP_MACAddressControlRule={st['rule']}\n"
+                           f"BeaconType={st['beacon']}\nX_TP_PreSharedKey={st['psk']}\nX_TP_MACAddressControlRule={st['rule']}\n"
                            f"MACAddressControlEnabled={st['acl_en']}")
                 out.append(f"[1,2,0,0,0,0]{idx}\nname=wlan5\nSSID=\nstatus=Disabled")
             elif t == "5" and oid == "LAN_HOST_ENTRY":
@@ -526,3 +526,11 @@ def test_wr840n_whitelist_refused(wr840n):
     with pytest.raises(NotSupportedError, match="Permitir"):
         service.set_blocked(conn, vecino, True)
     assert FakeWR840N.st["table"] == {}
+
+
+def test_current_passwords(tenda_host, wr840n):
+    t = service.current_passwords(service.Connection(tenda_host, "tenda", "admin", ADMIN))
+    assert t[0].password == "vieja1234"
+    FakeWR840N.st["psk"] = "clave840"
+    w = service.current_passwords(service.Connection(wr840n, "tplink", "admin", ADMIN))
+    assert w[0].password == "clave840"

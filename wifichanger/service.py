@@ -67,6 +67,12 @@ def change_password(conn: Connection, networks: list[WifiNetwork], new_password:
     return done + " Los equipos conectados deberán reconectarse con la nueva clave."
 
 
+def current_passwords(conn: Connection) -> list[WifiNetwork]:
+    """Redes con su clave actual (password=None si el router no la entrega)."""
+    with _driver(conn) as d:
+        return d.get_wifi_networks()
+
+
 def _driver(conn: Connection):
     return get_driver(conn.host.strip(), conn.admin_password, conn.brand_key, conn.username.strip() or "admin")
 

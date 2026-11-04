@@ -19,6 +19,7 @@ class WifiNetwork:
     enabled: bool
     security: str = ""
     guest: bool = False
+    password: str | None = None   # clave actual, si el router la entrega
 
 
 def normalize_mac(mac: str) -> str:

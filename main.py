@@ -12,12 +12,13 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.checkbox import CheckBox
 from kivy.uix.label import Label
+from kivy.core.clipboard import Clipboard
 from kivy.uix.popup import Popup
 from kivy.utils import escape_markup
 
 from wifichanger.base import RouterError
-from wifichanger.service import (BRAND_KEYS, Connection, change_password, connect, list_clients,
-                                 set_blocked, suggest_host)
+from wifichanger.service import (BRAND_KEYS, Connection, change_password, connect, current_passwords,
+                                 list_clients, set_blocked, suggest_host)
 
 Window.softinput_mode = "below_target"  # el teclado no tapa el campo activo
 
@@ -170,6 +171,14 @@ KV = """
                     size_hint_y: None
                     height: self.minimum_height
                     spacing: dp(2)
+                Button:
+                    text: "Mostrar contraseña actual"
+                    size_hint_y: None
+                    height: dp(46)
+                    background_normal: ""
+                    background_color: 0.18, 0.19, 0.24, 1
+                    disabled: root.busy
+                    on_release: root.show_current_password()
                 Section:
                     text: "Nueva clave"
                 Field:
@@ -299,6 +308,7 @@ class Root(BoxLayout):
             return
         self.busy = True
         self._msg(working, ok=None)
+        self._show_wait(working)
 
         def target():
             try:
@@ -312,9 +322,20 @@ class Root(BoxLayout):
 
         threading.Thread(target=target, daemon=True).start()
 
+    def _show_wait(self, text):
+        box = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(10))
+        box.add_widget(Label(text=text, font_size="18sp", bold=True))
+        box.add_widget(Label(text="Por favor espera…", color=MUTED, font_size="14sp"))
+        self._wait = Popup(title="", separator_height=0, content=box, size_hint=(0.85, None),
+                           height=dp(170), auto_dismiss=False)
+        self._wait.open()
+
     @mainthread
     def _done(self, callback, error):
         self.busy = False
+        if getattr(self, "_wait", None) is not None:
+            self._wait.dismiss()
+            self._wait = None
         if error:
             self._msg(error, ok=False)
             self._alert("No se pudo completar", error)
@@ -329,6 +350,34 @@ class Root(BoxLayout):
         box.add_widget(ok)
         popup = Popup(title=title, content=box, size_hint=(0.9, None), height=dp(320))
         ok.bind(on_release=lambda *_: popup.dismiss())
+        popup.open()
+
+    def _password_popup(self, title, intro, rows):
+        """rows: [(nombre_red, clave)]. Muestra cada clave con su botón Copiar."""
+        box = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(10))
+        if intro:
+            box.add_widget(_wrap_label(intro, color=MUTED, font_size="14sp"))
+        for name, pw in rows:
+            box.add_widget(_wrap_label(name, bold=True))
+            line = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
+            line.add_widget(Label(text=pw or "(sin clave)", font_size="20sp", bold=True,
+                                  color=(1, 1, 1, 1), halign="left", valign="middle",
+                                  text_size=(None, None)))
+            copy = Button(text="Copiar", size_hint_x=None, width=dp(96),
+                          background_normal="", background_color=BLUE, disabled=not pw)
+
+            def do_copy(btn, value=pw):
+                Clipboard.copy(value)
+                btn.text = "Copiada"
+            copy.bind(on_release=do_copy)
+            line.add_widget(copy)
+            box.add_widget(line)
+        close = Button(text="Cerrar", size_hint_y=None, height=dp(48),
+                       background_normal="", background_color=(0.25, 0.25, 0.3, 1))
+        box.add_widget(close)
+        height = dp(150) + len(rows) * dp(90) + (dp(60) if intro else 0)
+        popup = Popup(title=title, content=box, size_hint=(0.92, None), height=min(height, dp(560)))
+        close.bind(on_release=lambda *_: popup.dismiss())
         popup.open()
 
     def _msg(self, text, ok=True):
@@ -354,7 +403,7 @@ class Root(BoxLayout):
     def do_connect(self):
         conn = Connection(self.ids.host.text, BRAND_KEYS[self.ids.brand.text],
                           self.ids.user.text, self.ids.admin.text)
-        self._run(lambda: connect(conn), lambda nets: self._on_connected(conn, nets), "Conectando…")
+        self._run(lambda: connect(conn), lambda nets: self._on_connected(conn, nets), "Accediendo al equipo…")
 
     def _on_connected(self, conn, nets):
         self.conn = conn
@@ -392,6 +441,19 @@ class Root(BoxLayout):
             self.ids.nets.add_widget(row)
             self.checks.append((cb, n))
 
+    def show_current_password(self):
+        conn = self.conn
+
+        def ok(nets):
+            rows = [(f"{n.ssid}  ·  {n.band.value}", n.password) for n in nets if n.password is not None]
+            if not rows:
+                self._alert("Contraseña actual", "Este router no permite leer la clave actual desde la app.")
+                return
+            self._password_popup("Contraseña actual", None, rows)
+            self._msg("Clave actual leída del router.", ok=None)
+
+        self._run(lambda: current_passwords(conn), ok, "Leyendo la clave…")
+
     def do_change(self):
         selected = [n for cb, n in self.checks if cb.active]
         new_pw, confirm = self.ids.new_pw.text, self.ids.confirm.text
@@ -399,7 +461,8 @@ class Root(BoxLayout):
         names = ", ".join(n.ssid for n in selected) or "—"
 
         def go():
-            self._run(lambda: change_password(conn, selected, new_pw, confirm), self._changed, "Aplicando…")
+            self._run(lambda: change_password(conn, selected, new_pw, confirm),
+                      lambda msg: self._changed(msg, selected, new_pw), "Cambiando la clave…")
 
         if new_pw and new_pw == confirm and selected:
             self._confirm("Cambiar clave", f"Se cambiará la clave de: {names}.\n\nTodos los equipos "
@@ -408,9 +471,11 @@ class Root(BoxLayout):
         else:
             go()  # deja que la validación muestre el error
 
-    def _changed(self, message):
+    def _changed(self, message, networks, new_pw):
         self.ids.new_pw.text = self.ids.confirm.text = ""
         self._msg(message, ok=True)
+        names = ", ".join(f"{n.ssid} ({n.band.value})" for n in networks)
+        self._password_popup("Clave cambiada", message, [(f"Nueva clave de {names}", new_pw)])
 
     # --- pestaña Dispositivos ----------------------------------------------
     def show_devices(self):

@@ -137,7 +137,8 @@ class TPLinkCgiDriver(TPLinkDriver):
     def _wlans(self) -> list[dict]:
         (items,) = self._req([(GL, "LAN_WLAN", None, None,
                                ["name", "SSID", "Enable", "Status", "X_TP_Band", "BeaconType",
-                                "X_TP_MACAddressControlRule", "MACAddressControlEnabled"])])
+                                "X_TP_PreSharedKey", "X_TP_MACAddressControlRule",
+                                "MACAddressControlEnabled"])])
         return items
 
     def get_wifi_networks(self) -> list[WifiNetwork]:
@@ -148,8 +149,10 @@ class TPLinkCgiDriver(TPLinkDriver):
             if status == "disabled" and not _g(w, "SSID"):
                 continue
             beacon = str(_g(w, "BeaconType"))
-            sec = "Abierta" if beacon.lower() in ("basic", "none", "") else "WPA/WPA2"
-            nets.append(WifiNetwork(_band_of(w), _g(w, "SSID") or "(sin nombre)", enabled, sec))
+            is_psk = beacon.lower() in PSK_BEACONS
+            sec = "WPA/WPA2" if is_psk else "Abierta o WEP"
+            nets.append(WifiNetwork(_band_of(w), _g(w, "SSID") or "(sin nombre)", enabled, sec,
+                                    password=_g(w, "X_TP_PreSharedKey") if is_psk else ""))
         return nets
 
     def supports_password_change(self) -> bool:
