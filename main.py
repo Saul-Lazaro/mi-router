@@ -21,7 +21,7 @@ from wifichanger.base import RouterError
 from wifichanger.service import (BRAND_KEYS, Connection, change_password, connect, current_passwords,
                                  list_clients, set_blocked, suggest_host)
 
-Window.softinput_mode = "pan"  # Android desplaza la ventana para que el teclado no tape el campo
+Window.softinput_mode = ""  # sin desplazamiento de Kivy: Android ajusta la ventana y los toques llegan al campo correcto
 
 # Paleta tomada del logo de Group S & M (verdes)
 BG = (0.945, 0.969, 0.933, 1)       # verde muy claro de fondo
@@ -287,8 +287,9 @@ KV = """
                     id: host
                     halign: "center"
                     hint_text: "ej. 192.168.0.1"
-                    input_type: "number"
                     input_filter: lambda t, undo: t if t in "0123456789.:" else ""
+                    text_validate_unfocus: False
+                    on_text_validate: user.focus = True
                 FieldLabel:
                     text: "Usuario"
                 Field:
@@ -296,6 +297,8 @@ KV = """
                     halign: "center"
                     text: "admin"
                     hint_text: "normalmente admin"
+                    text_validate_unfocus: False
+                    on_text_validate: admin.focus = True
                 FieldLabel:
                     text: "Contraseña"
                 PasswordField:
