@@ -22,89 +22,200 @@ from wifichanger.service import (BRAND_KEYS, Connection, change_password, connec
 
 Window.softinput_mode = "below_target"  # el teclado no tapa el campo activo
 
-BG = (0.08, 0.09, 0.12, 1)
-CARD = (0.13, 0.14, 0.18, 1)
-BLUE = (0.13, 0.45, 0.85, 1)
-RED = (0.78, 0.22, 0.22, 1)
-GREEN = (0.2, 0.6, 0.35, 1)
-MUTED = (0.6, 0.6, 0.65, 1)
+# Paleta tomada del logo de Group S & M (verdes)
+BG = (0.945, 0.969, 0.933, 1)       # verde muy claro de fondo
+CARD = (1, 1, 1, 1)                 # tarjetas blancas
+DARK = (0.106, 0.420, 0.208, 1)     # verde oscuro del logo
+GREEN = (0.180, 0.620, 0.310, 1)    # verde principal
+LIME = (0.553, 0.776, 0.247, 1)     # verde lima del logo
+BLUE = GREEN                        # (compatibilidad: botones principales)
+RED = (0.839, 0.271, 0.271, 1)
+TEXT = (0.122, 0.176, 0.141, 1)
+MUTED = (0.42, 0.48, 0.44, 1)
 
 KV = """
 #:import dp kivy.metrics.dp
+
+#:set BG (0.945, 0.969, 0.933, 1)
+#:set DARK (0.106, 0.420, 0.208, 1)
+#:set GREEN (0.180, 0.620, 0.310, 1)
+#:set LIME (0.553, 0.776, 0.247, 1)
+#:set TEXT (0.122, 0.176, 0.141, 1)
+#:set MUTED (0.42, 0.48, 0.44, 1)
+#:set GRAY (0.70, 0.74, 0.71, 1)
+
+<Popup>:
+    background: ""
+    background_color: 1, 1, 1, 1
+    title_color: 0.106, 0.420, 0.208, 1
+    title_size: "19sp"
+    separator_color: 0.553, 0.776, 0.247, 1
+    separator_height: dp(3)
+    overlay_color: 0, 0.12, 0.05, 0.55
 
 <Field@TextInput>:
     multiline: False
     write_tab: False
     size_hint_y: None
-    height: dp(50)
+    height: dp(52)
     font_size: "16sp"
-    padding: [dp(12), dp(14)]
+    padding: [dp(14), dp(15)]
+    background_normal: ""
+    background_active: ""
+    background_color: 1, 1, 1, 1
+    foreground_color: TEXT
+    hint_text_color: MUTED
+    cursor_color: GREEN
+    canvas.after:
+        Color:
+            rgba: GREEN if self.focus else (0.80, 0.88, 0.78, 1)
+        Line:
+            width: dp(1.4) if self.focus else dp(1)
+            rounded_rectangle: (self.x, self.y, self.width, self.height, dp(12))
 
 <Section@Label>:
     size_hint_y: None
-    height: dp(30)
+    height: dp(32)
     text_size: self.width, None
     halign: "left"
     bold: True
-    color: 0.65, 0.8, 1, 1
-
-<BigButton@Button>:
-    size_hint_y: None
-    height: dp(54)
     font_size: "17sp"
+    color: DARK
+
+<RoundButton@Button>:
+    bg: GREEN
+    radius: dp(14)
     background_normal: ""
-    background_color: (0.13, 0.45, 0.85, 1) if not self.disabled else (0.3, 0.3, 0.35, 1)
+    background_down: ""
+    background_color: 0, 0, 0, 0
+    color: 1, 1, 1, 1
+    bold: True
+    canvas.before:
+        Color:
+            rgba: GRAY if self.disabled else ((self.bg[0] * 0.85, self.bg[1] * 0.85, self.bg[2] * 0.85, 1) if self.state == "down" else self.bg)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [self.radius]
+
+<BigButton@RoundButton>:
+    size_hint_y: None
+    height: dp(56)
+    font_size: "18sp"
+
+<SoftButton@RoundButton>:
+    bg: 0.86, 0.93, 0.83, 1
+    color: DARK
+    size_hint_y: None
+    height: dp(48)
+    font_size: "16sp"
 
 <TabButton@ToggleButton>:
     group: "tabs"
     allow_no_selection: False
     background_normal: ""
     background_down: ""
-    background_color: (0.13, 0.45, 0.85, 1) if self.state == "down" else (0.18, 0.19, 0.24, 1)
+    background_color: 0, 0, 0, 0
+    bold: True
     font_size: "16sp"
+    color: (1, 1, 1, 1) if self.state == "down" else DARK
+    canvas.before:
+        Color:
+            rgba: GREEN if self.state == "down" else (0.86, 0.93, 0.83, 1)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(12)]
+
+<Card@BoxLayout>:
+    orientation: "vertical"
+    size_hint_y: None
+    height: self.minimum_height
+    padding: dp(16), dp(16)
+    spacing: dp(12)
+    canvas.before:
+        Color:
+            rgba: 0, 0.25, 0.1, 0.06
+        RoundedRectangle:
+            pos: self.x, self.y - dp(2)
+            size: self.size
+            radius: [dp(18)]
+        Color:
+            rgba: 1, 1, 1, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(18)]
 
 <Root>:
     orientation: "vertical"
     canvas.before:
         Color:
-            rgba: 0.08, 0.09, 0.12, 1
+            rgba: BG
         Rectangle:
             pos: self.pos
             size: self.size
 
-    # ---------- cabecera ----------
+    # ---------- cabecera verde ----------
     BoxLayout:
         orientation: "vertical"
         size_hint_y: None
-        height: dp(84)
-        padding: dp(18), dp(8)
+        height: dp(92)
+        padding: dp(16), dp(10)
+        canvas.before:
+            Color:
+                rgba: DARK
+            Rectangle:
+                pos: self.pos
+                size: self.size
+            Color:
+                rgba: LIME
+            Rectangle:
+                pos: self.x, self.y
+                size: self.width, dp(5)
         BoxLayout:
-            spacing: dp(10)
-            Image:
-                source: "icon.png"
+            spacing: dp(12)
+            BoxLayout:
                 size_hint_x: None
-                width: dp(44)
-                allow_stretch: True
-            Label:
-                text: "Maxs Wifi"
-                font_size: "24sp"
-                bold: True
-                text_size: self.size
-                halign: "left"
-                valign: "middle"
-        Label:
-            text: (root.brand_name + " · " + root.host_shown) if root.connected else "TP-Link · Tenda"
-            color: 0.6, 0.6, 0.65, 1
-            font_size: "14sp"
+                width: dp(56)
+                padding: dp(4)
+                canvas.before:
+                    Color:
+                        rgba: 1, 1, 1, 1
+                    RoundedRectangle:
+                        pos: self.pos
+                        size: self.size
+                        radius: [dp(14)]
+                Image:
+                    source: "logo.png"
+                    allow_stretch: True
+            BoxLayout:
+                orientation: "vertical"
+                Label:
+                    text: "Maxs Wifi"
+                    font_size: "26sp"
+                    bold: True
+                    color: 1, 1, 1, 1
+                    text_size: self.size
+                    halign: "left"
+                    valign: "bottom"
+                Label:
+                    text: ("Conectado a " + root.brand_name + " · " + root.host_shown) if root.connected else "Clave Wi‑Fi y dispositivos · TP-Link · Tenda"
+                    font_size: "13sp"
+                    color: 0.85, 0.95, 0.80, 1
+                    text_size: self.size
+                    halign: "left"
+                    valign: "top"
+                    shorten: True
 
     # ---------- pestañas (solo tras conectar) ----------
     BoxLayout:
         size_hint_y: None
-        height: dp(48) if root.connected else 0
+        height: dp(62) if root.connected else 0
         opacity: 1 if root.connected else 0
         disabled: not root.connected
-        padding: dp(12), 0
-        spacing: dp(6)
+        padding: dp(14), dp(10), dp(14), dp(4)
+        spacing: dp(8)
         TabButton:
             id: tab_wifi
             text: "Clave Wi‑Fi"
@@ -113,34 +224,37 @@ KV = """
         TabButton:
             text: "Dispositivos"
             on_state: if self.state == "down": root.show_devices()
-        Button:
+        RoundButton:
             text: "Salir"
+            bg: 0.55, 0.60, 0.57, 1
             size_hint_x: None
-            width: dp(76)
-            background_normal: ""
-            background_color: 0.25, 0.25, 0.3, 1
+            width: dp(78)
             on_release: root.disconnect()
 
     ScrollView:
         do_scroll_x: False
         BoxLayout:
             orientation: "vertical"
-            padding: dp(18), dp(14)
-            spacing: dp(10)
+            padding: dp(14), dp(12), dp(14), dp(20)
+            spacing: dp(14)
             size_hint_y: None
             height: self.minimum_height
 
-            # ---------- login ----------
-            BoxLayout:
+            # ---------- inicio de sesión ----------
+            Card:
                 id: login
-                orientation: "vertical"
-                spacing: dp(10)
-                size_hint_y: None
                 height: self.minimum_height if not root.connected else 0
                 opacity: 0 if root.connected else 1
                 disabled: root.connected
                 Section:
-                    text: "Conectar al router"
+                    text: "Acceder al router"
+                Label:
+                    text: "Conéctate al Wi‑Fi del router y escribe la contraseña de su panel."
+                    color: MUTED
+                    font_size: "14sp"
+                    size_hint_y: None
+                    text_size: self.width, None
+                    height: self.texture_size[1]
                 Field:
                     id: host
                     hint_text: "IP del router (ej. 192.168.0.1)"
@@ -150,7 +264,11 @@ KV = """
                     text: "Detectar marca"
                     values: ["Detectar marca", "TP-Link", "Tenda"]
                     size_hint_y: None
-                    height: dp(50)
+                    height: dp(52)
+                    background_normal: ""
+                    background_color: 0.86, 0.93, 0.83, 1
+                    color: DARK
+                    bold: True
                 Field:
                     id: user
                     text: "admin"
@@ -161,80 +279,80 @@ KV = """
                     hint_text: "Contraseña de administrador"
                     on_text_validate: root.do_connect()
                 BigButton:
-                    text: "Conectando…" if root.busy else "Conectar"
+                    text: "Accediendo…" if root.busy else "Conectar"
                     disabled: root.busy
                     on_release: root.do_connect()
 
             # ---------- pestaña Wi‑Fi ----------
             BoxLayout:
                 orientation: "vertical"
-                spacing: dp(10)
+                spacing: dp(14)
                 size_hint_y: None
                 height: self.minimum_height if root.connected and root.tab == "wifi" else 0
                 opacity: 1 if root.connected and root.tab == "wifi" else 0
                 disabled: not (root.connected and root.tab == "wifi")
-                Section:
-                    text: "Redes"
-                BoxLayout:
-                    id: nets
-                    orientation: "vertical"
-                    size_hint_y: None
-                    height: self.minimum_height
-                    spacing: dp(2)
-                Button:
-                    text: "Mostrar contraseña actual"
-                    size_hint_y: None
-                    height: dp(46)
-                    background_normal: ""
-                    background_color: 0.18, 0.19, 0.24, 1
-                    disabled: root.busy
-                    on_release: root.show_current_password()
-                Section:
-                    text: "Nueva clave"
-                Field:
-                    id: new_pw
-                    password: True
-                    hint_text: "Nueva clave Wi‑Fi (8 a 63 caracteres)"
-                Field:
-                    id: confirm
-                    password: True
-                    hint_text: "Repite la nueva clave"
-                BoxLayout:
-                    size_hint_y: None
-                    height: dp(40)
-                    CheckBox:
-                        size_hint_x: None
-                        width: dp(44)
-                        on_active: new_pw.password = confirm.password = not self.active
-                    Label:
-                        text: "Mostrar clave"
-                        text_size: self.size
-                        valign: "middle"
-                BigButton:
-                    text: "Aplicando…" if root.busy else "Cambiar clave"
-                    disabled: root.busy
-                    on_release: root.do_change()
+                Card:
+                    Section:
+                        text: "Mis redes Wi‑Fi"
+                    BoxLayout:
+                        id: nets
+                        orientation: "vertical"
+                        size_hint_y: None
+                        height: self.minimum_height
+                        spacing: dp(2)
+                    SoftButton:
+                        text: "Mostrar contraseña actual"
+                        disabled: root.busy
+                        on_release: root.show_current_password()
+                Card:
+                    Section:
+                        text: "Nueva clave"
+                    Field:
+                        id: new_pw
+                        password: True
+                        hint_text: "Nueva clave Wi‑Fi (8 a 63 caracteres)"
+                    Field:
+                        id: confirm
+                        password: True
+                        hint_text: "Repite la nueva clave"
+                    BoxLayout:
+                        size_hint_y: None
+                        height: dp(40)
+                        CheckBox:
+                            size_hint_x: None
+                            width: dp(44)
+                            color: DARK
+                            on_active: new_pw.password = confirm.password = not self.active
+                        Label:
+                            text: "Mostrar clave"
+                            color: TEXT
+                            text_size: self.size
+                            valign: "middle"
+                    BigButton:
+                        text: "Aplicando…" if root.busy else "Cambiar clave"
+                        disabled: root.busy
+                        on_release: root.do_change()
 
             # ---------- pestaña Dispositivos ----------
             BoxLayout:
                 orientation: "vertical"
-                spacing: dp(8)
+                spacing: dp(10)
                 size_hint_y: None
                 height: self.minimum_height if root.connected and root.tab == "devices" else 0
                 opacity: 1 if root.connected and root.tab == "devices" else 0
                 disabled: not (root.connected and root.tab == "devices")
                 BoxLayout:
                     size_hint_y: None
-                    height: dp(44)
+                    height: dp(46)
+                    spacing: dp(8)
                     Section:
                         text: root.devices_title
-                        height: dp(44)
-                    Button:
+                        height: dp(46)
+                    SoftButton:
                         text: "Actualizar"
                         size_hint_x: None
-                        width: dp(110)
-                        background_normal: ""
-                        background_color: 0.18, 0.19, 0.24, 1
+                        width: dp(118)
+                        height: dp(44)
                         disabled: root.busy
                         on_release: root.load_devices()
                 BoxLayout:
@@ -242,19 +360,36 @@ KV = """
                     orientation: "vertical"
                     size_hint_y: None
                     height: self.minimum_height
-                    spacing: dp(8)
+                    spacing: dp(10)
 
             Label:
                 text: root.status
                 color: root.status_color
+                font_size: "14sp"
                 text_size: self.width, None
                 size_hint_y: None
-                height: self.texture_size[1] + dp(16)
-                halign: "left"
+                height: (self.texture_size[1] + dp(8)) if root.status else 0
+                halign: "center"
+
+            # ---------- logo grande al pie (inicio de sesión y dentro de la app) ----------
+            Card:
+                padding: dp(12), dp(12)
+                Image:
+                    source: "logo.png"
+                    size_hint_y: None
+                    height: dp(240)
+                    allow_stretch: True
+                    keep_ratio: True
+                Label:
+                    text: "Group S & M · Max's Solution E.I.R.L."
+                    color: MUTED
+                    font_size: "12sp"
+                    size_hint_y: None
+                    height: dp(18)
 """
 
 
-def _wrap_label(text, color=(1, 1, 1, 1), font_size="15sp", bold=False, markup=False):
+def _wrap_label(text, color=TEXT, font_size="15sp", bold=False, markup=False):
     lbl = Label(text=text, color=color, font_size=font_size, bold=bold, markup=markup,
                 halign="left", valign="middle", size_hint_y=None)
     lbl.bind(width=lambda w, v: setattr(w, "text_size", (v, None)),
@@ -266,17 +401,17 @@ class DeviceCard(BoxLayout):
     """Tarjeta de un dispositivo con su botón Bloquear/Desbloquear."""
 
     def __init__(self, device, on_action, **kw):
-        super().__init__(orientation="horizontal", size_hint_y=None, height=dp(78),
+        super().__init__(orientation="horizontal", size_hint_y=None, height=dp(84),
                          padding=(dp(12), dp(8)), spacing=dp(8), **kw)
         from kivy.graphics import Color, RoundedRectangle
         with self.canvas.before:
             Color(*CARD)
-            self._bg = RoundedRectangle(radius=[dp(10)])
+            self._bg = RoundedRectangle(radius=[dp(16)])
         self.bind(pos=lambda *_: setattr(self._bg, "pos", self.pos),
                   size=lambda *_: setattr(self._bg, "size", self.size))
 
         info = BoxLayout(orientation="vertical", spacing=dp(2))
-        title = escape_markup(device.label) + ("  [color=8fc3ff](este teléfono)[/color]" if device.is_self else "")
+        title = escape_markup(device.label) + ("  [color=2e9e4f](este teléfono)[/color]" if device.is_self else "")
         info.add_widget(_wrap_label(title, bold=True, markup=True))
         detail = " · ".join(x for x in (device.ip, device.connection, device.mac.upper()) if x)
         info.add_widget(_wrap_label(detail, color=MUTED, font_size="12sp"))
@@ -303,7 +438,7 @@ class Root(BoxLayout):
     host_shown = StringProperty("")
     devices_title = StringProperty("Dispositivos")
     status = StringProperty("")
-    status_color = ListProperty([0.8, 0.8, 0.85, 1])
+    status_color = ListProperty(list(MUTED))
 
     def __init__(self, **kw):
         super().__init__(**kw)
@@ -334,7 +469,7 @@ class Root(BoxLayout):
 
     def _show_wait(self, text):
         box = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(10))
-        box.add_widget(Label(text=text, font_size="18sp", bold=True))
+        box.add_widget(Label(text=text, font_size="19sp", bold=True, color=DARK))
         box.add_widget(Label(text="Por favor espera…", color=MUTED, font_size="14sp"))
         self._wait = Popup(title="", separator_height=0, content=box, size_hint=(0.85, None),
                            height=dp(170), auto_dismiss=False)
@@ -371,7 +506,7 @@ class Root(BoxLayout):
             box.add_widget(_wrap_label(name, bold=True))
             line = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
             line.add_widget(Label(text=pw or "(sin clave)", font_size="20sp", bold=True,
-                                  color=(1, 1, 1, 1), halign="left", valign="middle",
+                                  color=DARK, halign="left", valign="middle",
                                   text_size=(None, None)))
             copy = Button(text="Copiar", size_hint_x=None, width=dp(96),
                           background_normal="", background_color=BLUE, disabled=not pw)
@@ -383,7 +518,7 @@ class Root(BoxLayout):
             line.add_widget(copy)
             box.add_widget(line)
         close = Button(text="Cerrar", size_hint_y=None, height=dp(48),
-                       background_normal="", background_color=(0.25, 0.25, 0.3, 1))
+                       background_normal="", background_color=(0.55, 0.60, 0.57, 1))
         box.add_widget(close)
         height = dp(150) + len(rows) * dp(90) + (dp(60) if intro else 0)
         popup = Popup(title=title, content=box, size_hint=(0.92, None), height=min(height, dp(560)))
@@ -391,8 +526,7 @@ class Root(BoxLayout):
         popup.open()
 
     def _msg(self, text, ok=True):
-        self.status_color = {True: [0.45, 0.85, 0.5, 1], False: [1, 0.45, 0.4, 1],
-                             None: [0.8, 0.8, 0.85, 1]}[ok]
+        self.status_color = {True: list(DARK), False: list(RED), None: list(MUTED)}[ok]
         self.status = text
 
     def _confirm(self, title, text, yes_text, yes_color, on_yes):
@@ -400,7 +534,7 @@ class Root(BoxLayout):
         box.add_widget(_wrap_label(text))
         row = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(10))
         popup = Popup(title=title, content=box, size_hint=(0.9, None), height=dp(260), auto_dismiss=True)
-        cancel = Button(text="Cancelar", background_normal="", background_color=(0.25, 0.25, 0.3, 1))
+        cancel = Button(text="Cancelar", background_normal="", background_color=(0.55, 0.60, 0.57, 1))
         yes = Button(text=yes_text, background_normal="", background_color=yes_color)
         cancel.bind(on_release=lambda *_: popup.dismiss())
         yes.bind(on_release=lambda *_: (popup.dismiss(), on_yes()))
@@ -442,7 +576,7 @@ class Root(BoxLayout):
         self.checks = []
         for n in nets:
             row = BoxLayout(size_hint_y=None, height=dp(44))
-            cb = CheckBox(size_hint_x=None, width=dp(44), active=n.enabled and not n.guest)
+            cb = CheckBox(size_hint_x=None, width=dp(44), active=n.enabled and not n.guest, color=DARK)
             label = f"{n.ssid}  ·  {n.band.value}" + ("  ·  invitados" if n.guest else "")
             if not n.enabled:
                 label += "  (apagada)"
