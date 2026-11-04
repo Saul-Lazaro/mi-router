@@ -1,0 +1,2 @@
+requests>=2.31
+tplinkrouterc6u>=5.0
