@@ -317,8 +317,19 @@ class Root(BoxLayout):
         self.busy = False
         if error:
             self._msg(error, ok=False)
+            self._alert("No se pudo completar", error)
         else:
             callback()
+
+    def _alert(self, title, text):
+        box = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(12))
+        box.add_widget(_wrap_label(text))
+        ok = Button(text="Entendido", size_hint_y=None, height=dp(48),
+                    background_normal="", background_color=BLUE)
+        box.add_widget(ok)
+        popup = Popup(title=title, content=box, size_hint=(0.9, None), height=dp(320))
+        ok.bind(on_release=lambda *_: popup.dismiss())
+        popup.open()
 
     def _msg(self, text, ok=True):
         self.status_color = {True: [0.45, 0.85, 0.5, 1], False: [1, 0.45, 0.4, 1],

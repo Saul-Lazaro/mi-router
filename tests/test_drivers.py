@@ -340,3 +340,70 @@ def test_tplink_old_model_lists_but_cannot_block():
 def test_normalize_mac():
     from wifichanger.base import normalize_mac
     assert normalize_mac("AA-BB-CC-DD-EE-FF") == normalize_mac("aabb.ccdd.eeff") == "aa:bb:cc:dd:ee:ff"
+
+
+# ------------------------------------- TP-Link familia cgi_gdpr (WR840N v6+, WR841N)
+class FakeGdpr:
+    """Imita TPLinkWR841NClient: req_act + ActItem, sin get_wifi ni request."""
+    class ActItem:
+        GET, SET, ADD, DEL, GL, GS, OP, CGI = 1, 2, 3, 4, 5, 6, 7, 8
+
+        def __init__(self, type, oid, stack="0,0,0,0,0,0", pstack="0,0,0,0,0,0", attrs=None):
+            self.type, self.oid, self.stack, self.attrs = type, oid, stack, attrs or []
+
+    def __init__(self):
+        self.sets = []
+
+    def authorize(self): pass
+    def logout(self): pass
+
+    def get_status(self):
+        return FakeStatus()
+
+    def req_act(self, acts):
+        out = []
+        for a in acts:
+            if a.type == self.ActItem.GL and a.oid == "LAN_WLAN":
+                out.append({"enable": "1", "SSID": "TP-Link_840", "X_TP_Band": "2.4GHz"})
+            elif a.type == self.ActItem.SET:
+                self.sets.append((a.oid, a.stack, a.attrs))
+        return "", (out[0] if len(out) == 1 else out)
+
+    def set_wifi(self, wifi, enable):
+        pass
+
+
+def test_gdpr_wifi_and_password():
+    client = FakeGdpr()
+    with tplink_mod.TPLinkDriver("192.168.0.1", ADMIN, client=client) as d:
+        nets = d.get_wifi_networks()
+        assert [(n.ssid, n.band) for n in nets] == [("TP-Link_840", Band.B24)]
+        d.set_wifi_passwords([Band.B24], "Nueva=Clave&1")
+    assert client.sets == [("LAN_WLAN", "1,1,0,0,0,0", ["X_TP_PreSharedKey=Nueva=Clave&1"])]
+
+
+def test_gdpr_clients_ok_block_not_supported():
+    with tplink_mod.TPLinkDriver("192.168.0.1", ADMIN, client=FakeGdpr()) as d:
+        devs = d.get_clients()
+        assert len(devs) == 2
+        with pytest.raises(NotSupportedError, match="WR840N"):
+            d.block_client(devs[0])
+
+
+def test_old_firmware_detected():
+    class Old(BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+
+        def do_GET(self):
+            self.send_response(401)
+            self.send_header("WWW-Authenticate", 'Basic realm="TP-LINK Wireless N Router WR840N"')
+            self.end_headers()
+    srv = HTTPServer(("127.0.0.1", 0), Old)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    host = f"http://127.0.0.1:{srv.server_port}"
+    try:
+        assert detect_brand(host) == "tplink"
+        with pytest.raises(NotSupportedError, match="firmware antiguo"):
+            tplink_mod.TPLinkDriver(host, ADMIN).login()
+    finally:
+        srv.shutdown()

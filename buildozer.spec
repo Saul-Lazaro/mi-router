@@ -5,7 +5,7 @@ package.domain = com.wifichanger
 source.dir = .
 source.include_exts = py
 source.exclude_dirs = tests, bin, .buildozer, .github, .git, __pycache__
-version = 0.2.0
+version = 0.3.0
 
 # Dependencias que python-for-android empaqueta dentro del APK.
 # pycryptodome tiene receta nativa en p4a (la necesita el login cifrado de TP-Link).

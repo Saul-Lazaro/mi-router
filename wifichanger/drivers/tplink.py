@@ -19,9 +19,13 @@ from urllib.parse import quote
 from ..base import (AuthError, Band, ClientDevice, NotSupportedError, RouterDriver, RouterError,
                     WifiNetwork, local_ip_for, normalize_mac, validate_wifi_password)
 
+import requests
+
 try:  # Import perezoso: la app funciona aunque solo se use el driver Tenda.
+    import tplinkrouterc6u
     from tplinkrouterc6u import Connection, TplinkRouterProvider
 except ImportError:  # pragma: no cover
+    tplinkrouterc6u = None
     Connection = None
     TplinkRouterProvider = None
 
@@ -41,31 +45,105 @@ class TPLinkDriver(RouterDriver):
 
     @classmethod
     def matches(cls, homepage_html: str, headers: dict) -> bool:
-        html = homepage_html.lower()
-        return any(s in html for s in ("tp-link", "tplink", "mercusys", "/webpages/", "tplinkwifi.net"))
+        text = (homepage_html + " " + " ".join(f"{k} {v}" for k, v in headers.items())).lower()
+        return any(s in text for s in ("tp-link", "tplink", "mercusys", "/webpages/", "tplinkwifi.net",
+                                       "cgi_gdpr", "cgi/getparm", "userrpm", "loginrpm"))
 
     # --- sesión -------------------------------------------------------------
-    def login(self) -> None:
-        if self._client is None:
-            if TplinkRouterProvider is None:
-                raise RouterError("Falta la dependencia: pip install tplinkrouterc6u")
-            try:
-                self._client = TplinkRouterProvider.get_client(
-                    self.host, self.admin_password, self.username, timeout=self.timeout)
-            except Exception as e:  # el provider lanza si ningún cliente encaja
-                raise AuthError(f"No se pudo iniciar sesión en el TP-Link: {e}") from e
+    def _homepage(self) -> str:
         try:
-            self._client.authorize()
-        except Exception as e:
-            raise AuthError(f"Login rechazado por el router: {e}") from e
+            r = requests.get(self.host + "/", timeout=8, allow_redirects=True)
+        except requests.RequestException as e:
+            raise RouterError(f"No se pudo conectar con {self.host}: {e}") from e
+        return r.text.lower() + " " + r.headers.get("WWW-Authenticate", "").lower()
+
+    def _gdpr_client(self):
+        """WR840N v6+, WR841N v14, WR844N, C50…: login /cgi/login + /cgi_gdpr."""
+        for name in ("TPLinkWR841NClient", "TPLinkC50Client"):
+            cls = getattr(tplinkrouterc6u, name, None) if tplinkrouterc6u else None
+            if cls is None:
+                continue
+            client = cls(self.host, self.admin_password, self.username, timeout=self.timeout)
+            try:
+                client.authorize()
+                return client
+            except Exception:
+                continue
+        return None
+
+    def login(self) -> None:
+        if self._client is not None:
+            try:
+                self._client.authorize()
+            except Exception as e:
+                raise AuthError(f"Login rechazado por el router: {e}") from e
+            return
+        page = self._homepage()
+        if "userrpm" in page or "loginrpm" in page or 'basic realm="tp-link' in page:
+            raise NotSupportedError(
+                "Este TP-Link tiene el firmware antiguo (panel 'userRpm', p. ej. WR840N v1–v5). "
+                "La app aún no es compatible con esa versión.")
+        if TplinkRouterProvider is None:
+            raise RouterError("Falta la dependencia: pip install tplinkrouterc6u")
+        if "/webpages/" not in page:  # "/webpages/" = firmware luci moderno (Archer C6/AX…)
+            self._client = self._gdpr_client()
+            if self._client is not None:
+                return
+        try:
+            # el provider ya hace login al elegir el cliente
+            self._client = TplinkRouterProvider.get_client(
+                self.host, self.admin_password, self.username, timeout=self.timeout)
+        except Exception as e:  # el provider lanza si ningún cliente encaja
+            raise AuthError("No se pudo iniciar sesión en el TP-Link. Revisa la contraseña de "
+                            f"administrador (la misma del panel web). Detalle: {e}") from e
 
     def logout(self) -> None:
         if self._client is not None:
             self._client.logout()
 
+    # --- familia cgi_gdpr (WR840N v6+, WR841N v14, C50…) ------------------------
+    WLAN_STACK = {Band.B24: "1,1,0,0,0,0", Band.B5: "1,2,0,0,0,0"}
+
+    def _is_gdpr(self) -> bool:
+        return hasattr(self._client, "req_act") and hasattr(self._client, "ActItem")
+
+    def _gdpr_networks(self) -> list[WifiNetwork]:
+        act = self._client.ActItem
+        _, values = self._client.req_act([act(act.GL, "LAN_WLAN", attrs=["enable", "SSID", "X_TP_Band"])])
+        items = values if isinstance(values, list) else [values]
+        nets = []
+        for i, item in enumerate(i for i in items if isinstance(i, dict)):
+            band_txt = str(item.get("X_TP_Band", "")).lower()
+            band = Band.B5 if "5" in band_txt else Band.B24 if band_txt else (Band.B24, Band.B5)[min(i, 1)]
+            nets.append(WifiNetwork(band, item.get("SSID", "") or "(sin nombre)",
+                                    str(item.get("enable", "1")) == "1", "WPA/WPA2"))
+        return nets
+
+    def _gdpr_set_password(self, bands: list[Band], new_password: str) -> None:
+        act = self._client.ActItem
+        acts = []
+        for band in dict.fromkeys(bands):
+            if band not in self.WLAN_STACK:
+                raise NotSupportedError(f"Este modelo no tiene banda {band.value}.")
+            acts.append(act(act.SET, "LAN_WLAN", self.WLAN_STACK[band],
+                            attrs=[f"X_TP_PreSharedKey={new_password}"]))
+        try:
+            self._client.req_act(acts)
+        except (requests.ConnectionError, requests.Timeout):
+            raise
+        except Exception as e:
+            raise RouterError(f"El router rechazó el cambio de clave: {e}") from e
+
     # --- lectura ------------------------------------------------------------
     def get_wifi_networks(self) -> list[WifiNetwork]:
         nets: list[WifiNetwork] = []
+        if self._is_gdpr():
+            try:
+                nets = self._gdpr_networks()
+            except Exception:
+                nets = []
+            if nets:
+                return nets
         if hasattr(self._client, "get_wifi"):
             for guest in (False, True):
                 for band in Band:
@@ -90,6 +168,8 @@ class TPLinkDriver(RouterDriver):
 
     # --- escritura ----------------------------------------------------------
     def supports_password_change(self) -> bool:
+        if self._is_gdpr():
+            return True
         set_wifi = getattr(self._client, "set_wifi", None)
         return set_wifi is not None and "psk_key" in inspect.signature(set_wifi).parameters
 
@@ -99,6 +179,10 @@ class TPLinkDriver(RouterDriver):
             raise NotSupportedError(
                 f"El cliente {type(self._client).__name__} de este modelo solo permite "
                 "activar/desactivar el Wi‑Fi; cambiar la clave requiere un driver propio.")
+        if self._is_gdpr():
+            if guest:
+                raise NotSupportedError("Cambiar la clave de la red de invitados aún no está soportado en este modelo.")
+            return self._gdpr_set_password([band], new_password)
         # La librería arma el cuerpo x-www-form-urlencoded sin escapar: una clave con
         # '&' o '=' rompería la petición, así que la codificamos aquí.
         self._client.set_wifi(_connection_for(band, guest), psk_key=quote(new_password, safe=""))
@@ -114,8 +198,18 @@ class TPLinkDriver(RouterDriver):
         band = {"2G": "2.4GHz", "5G": "5GHz", "6G": "6GHz"}.get(name[-2:], "Wi‑Fi")
         return f"Invitados {band}" if name.startswith("GUEST") else band
 
+    def set_wifi_passwords(self, bands: list[Band], new_password: str, guest: bool = False) -> None:
+        if self._is_gdpr() and not guest:
+            validate_wifi_password(new_password)
+            return self._gdpr_set_password(bands, new_password)  # una sola petición
+        super().set_wifi_passwords(bands, new_password, guest)
+
     def _ac(self, form: str, data: str):
         request = getattr(self._client, "request", None)
+        if self._is_gdpr():
+            raise NotSupportedError(
+                "Bloquear dispositivos aún no está disponible para este modelo de TP-Link "
+                "(WR840N/WR841N). Sí puedes ver los conectados y cambiar la clave.")
         if request is None:
             raise NotSupportedError(
                 f"El modelo ({type(self._client).__name__}) no expone el Control de acceso por API.")
