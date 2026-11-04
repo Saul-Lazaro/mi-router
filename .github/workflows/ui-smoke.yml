@@ -1,0 +1,19 @@
+name: Prueba de interfaz
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  ui:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y xvfb libgl1 libegl1 libmtdev1 xclip
+      - run: pip install "kivy[base]==2.3.1" requests
+      - name: Arrancar la app en pantalla virtual
+        run: xvfb-run -a -s "-screen 0 1080x1920x24" python tests/ui_smoke.py
