@@ -7,7 +7,7 @@ from kivy.clock import mainthread
 from kivy.core.window import Window
 from kivy.lang import Builder
 from kivy.metrics import dp
-from kivy.properties import BooleanProperty, ListProperty, StringProperty
+from kivy.properties import BooleanProperty, ListProperty, NumericProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.checkbox import CheckBox
@@ -82,9 +82,7 @@ KV = """
     font_size: "17sp"
     color: DARK
 
-<RoundButton@Button>:
-    bg: GREEN
-    radius: dp(14)
+<RoundButton>:
     background_normal: ""
     background_down: ""
     background_color: 0, 0, 0, 0
@@ -387,6 +385,13 @@ KV = """
                     size_hint_y: None
                     height: dp(18)
 """
+
+
+class RoundButton(Button):
+    """Botón redondeado; `bg` y `radius` son propiedades reales para que el KV
+    pueda usarlas en el canvas desde el primer dibujo."""
+    bg = ListProperty([0.180, 0.620, 0.310, 1])
+    radius = NumericProperty(dp(14))
 
 
 def _wrap_label(text, color=TEXT, font_size="15sp", bold=False, markup=False):
