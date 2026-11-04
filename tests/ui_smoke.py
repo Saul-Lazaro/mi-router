@@ -20,6 +20,14 @@ def poke(dt):
     try:
         app = main.App.get_running_app()
         root = app.root
+        # pantalla de acceso: escribir la contraseña y elegir marca
+        root.ids.admin.focus = True
+        root.ids.admin.insert_text("clave123")
+        assert root.ids.admin.text == "clave123", root.ids.admin.text
+        root.ids.admin_show.active = True
+        assert root.ids.admin.password is False
+        root.brand_choice = "TP-Link"
+        root.ids.admin.focus = False
         root._show_wait("Accediendo al equipo…")
         root._wait.dismiss()
         root._alert("Prueba", "Mensaje de prueba")

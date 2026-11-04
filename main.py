@@ -20,7 +20,7 @@ from wifichanger.base import RouterError
 from wifichanger.service import (BRAND_KEYS, Connection, change_password, connect, current_passwords,
                                  list_clients, set_blocked, suggest_host)
 
-Window.softinput_mode = "below_target"  # el teclado no tapa el campo activo
+Window.softinput_mode = "pan"  # Android desplaza la ventana para que el teclado no tape el campo
 
 # Paleta tomada del logo de Group S & M (verdes)
 BG = (0.945, 0.969, 0.933, 1)       # verde muy claro de fondo
@@ -125,6 +125,10 @@ KV = """
             size: self.size
             radius: [dp(12)]
 
+<BrandButton@TabButton>:
+    group: "brand"
+    font_size: "15sp"
+
 <Card@BoxLayout>:
     orientation: "vertical"
     size_hint_y: None
@@ -158,7 +162,8 @@ KV = """
     BoxLayout:
         orientation: "vertical"
         size_hint_y: None
-        height: dp(92)
+        height: dp(92) if root.connected else 0
+        opacity: 1 if root.connected else 0
         padding: dp(16), dp(10)
         canvas.before:
             Color:
@@ -256,26 +261,52 @@ KV = """
                 Field:
                     id: host
                     hint_text: "IP del router (ej. 192.168.0.1)"
+                    input_type: "number"
                     input_filter: lambda t, undo: t if t in "0123456789.:" else ""
-                Spinner:
-                    id: brand
-                    text: "Detectar marca"
-                    values: ["Detectar marca", "TP-Link", "Tenda"]
+                Field:
+                    id: admin
+                    password: not admin_show.active
+                    hint_text: "Contraseña de administrador"
+                    on_text_validate: root.do_connect()
+                BoxLayout:
                     size_hint_y: None
-                    height: dp(52)
-                    background_normal: ""
-                    background_color: 0.86, 0.93, 0.83, 1
-                    color: DARK
-                    bold: True
+                    height: dp(36)
+                    CheckBox:
+                        id: admin_show
+                        size_hint_x: None
+                        width: dp(44)
+                        color: DARK
+                    Label:
+                        text: "Mostrar contraseña"
+                        color: TEXT
+                        text_size: self.size
+                        valign: "middle"
+                Label:
+                    text: "Marca del router"
+                    color: MUTED
+                    font_size: "14sp"
+                    size_hint_y: None
+                    height: dp(20)
+                    text_size: self.size
+                    halign: "left"
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(48)
+                    spacing: dp(8)
+                    BrandButton:
+                        text: "Detectar"
+                        state: "down"
+                        on_state: if self.state == "down": root.brand_choice = "Detectar marca"
+                    BrandButton:
+                        text: "TP-Link"
+                        on_state: if self.state == "down": root.brand_choice = "TP-Link"
+                    BrandButton:
+                        text: "Tenda"
+                        on_state: if self.state == "down": root.brand_choice = "Tenda"
                 Field:
                     id: user
                     text: "admin"
-                    hint_text: "Usuario administrador"
-                Field:
-                    id: admin
-                    password: True
-                    hint_text: "Contraseña de administrador"
-                    on_text_validate: root.do_connect()
+                    hint_text: "Usuario administrador (normalmente admin)"
                 BigButton:
                     text: "Accediendo…" if root.busy else "Conectar"
                     disabled: root.busy
@@ -443,6 +474,7 @@ class Root(BoxLayout):
     host_shown = StringProperty("")
     devices_title = StringProperty("Dispositivos")
     status = StringProperty("")
+    brand_choice = StringProperty("Detectar marca")
     status_color = ListProperty(list(MUTED))
 
     def __init__(self, **kw):
@@ -550,7 +582,7 @@ class Root(BoxLayout):
 
     # --- conexión ----------------------------------------------------------
     def do_connect(self):
-        conn = Connection(self.ids.host.text, BRAND_KEYS[self.ids.brand.text],
+        conn = Connection(self.ids.host.text, BRAND_KEYS[self.brand_choice],
                           self.ids.user.text, self.ids.admin.text)
         self._run(lambda: connect(conn), lambda nets: self._on_connected(conn, nets), "Accediendo al equipo…")
 
