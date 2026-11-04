@@ -10,7 +10,7 @@ env:
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -21,7 +21,7 @@ jobs:
 
   apk:
     needs: tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +46,7 @@ jobs:
           pip install git+https://github.com/kivy/buildozer
           pip install legacy-cgi setuptools "cython==0.29.34"
 
+      # Guarda el SDK/NDK y lo ya compilado: la 1.ª vez tarda ~30 min, luego mucho menos.
       - uses: actions/cache@v4
         with:
           path: |
