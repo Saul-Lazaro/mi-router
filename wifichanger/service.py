@@ -25,14 +25,21 @@ def suggest_host() -> str:
     return default_gateway() or "192.168.0.1"
 
 
-def connect(conn: Connection) -> list[WifiNetwork]:
-    """Inicia sesión y devuelve las redes. Rellena conn.brand_name."""
+def connect(conn: Connection, progress=None) -> list[WifiNetwork]:
+    """Inicia sesión y devuelve las redes. Rellena conn.brand_name.
+    `progress(texto)` recibe el paso actual para mostrarlo en pantalla."""
+    say = progress or (lambda msg: None)
+    if not conn.host.strip():
+        raise RouterError("Escribe la IP del router.")
     if not conn.admin_password:
         raise RouterError("Escribe la contraseña de administrador del router.")
-    driver = get_driver(conn.host.strip(), conn.admin_password, conn.brand_key, conn.username.strip() or "admin")
+    driver = get_driver(conn.host.strip(), conn.admin_password, conn.brand_key,
+                        conn.username.strip() or "admin", progress=say)
     conn.brand_name = driver.brand
     conn.brand_key = next(k for k, cls in DRIVERS.items() if isinstance(driver, cls))
+    say(f"Iniciando sesión en el {driver.brand}…")
     with driver:
+        say("Leyendo las redes Wi‑Fi…")
         nets = driver.get_wifi_networks()
     if not nets:
         raise NotSupportedError("El router no informó ninguna red Wi‑Fi.")

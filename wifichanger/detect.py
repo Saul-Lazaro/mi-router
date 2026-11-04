@@ -59,39 +59,55 @@ def default_gateway() -> str | None:
     return None
 
 
-def detect_brand(host: str, timeout: int = 5) -> str | None:
-    """Huella HTTP de la página de inicio del router."""
+_PAGE_TIMEOUT = 6
+_cache: dict[tuple[str, str | None], type[RouterDriver]] = {}  # (host, marca) -> clase elegida
+
+
+def _fetch(host: str) -> tuple[str, dict]:
     url = host if host.startswith("http") else f"http://{host}"
     try:
-        r = requests.get(url, timeout=timeout, allow_redirects=True)
+        r = requests.get(url, timeout=_PAGE_TIMEOUT, allow_redirects=True)
+    except requests.Timeout as e:
+        raise RouterError(f"El router en {host} no respondió a tiempo. ¿Estás conectado a su Wi‑Fi "
+                          "y la IP es correcta?") from e
     except requests.RequestException as e:
-        raise RouterError(f"No se pudo conectar con {url}: {e}") from e
+        raise RouterError(f"No se pudo conectar con {host}. Revisa que estés en el Wi‑Fi del router "
+                          "y que la IP sea correcta.") from e
+    return r.text, dict(r.headers)
+
+
+def _brand_from_page(html: str, headers: dict) -> str | None:
     for key, driver in DRIVERS.items():
-        if driver.matches(r.text, dict(r.headers)):
+        if driver.matches(html, headers):
             return key
     return None
 
 
+def detect_brand(host: str, timeout: int = 5) -> str | None:
+    """Huella HTTP de la página de inicio del router."""
+    return _brand_from_page(*_fetch(host))
+
+
 def get_driver(host: str | None, admin_password: str, brand: str | None = None,
-               username: str = "admin") -> RouterDriver:
-    host = host or default_gateway()
+               username: str = "admin", progress=None) -> RouterDriver:
+    say = progress or (lambda msg: None)
+    host = (host or default_gateway() or "").strip()
     if not host:
-        raise RouterError("No se encontró el gateway; indica la IP del router.")
-    brand = brand or detect_brand(host)
-    if brand not in DRIVERS:
-        raise RouterError(f"Marca no reconocida en {host}. Usa --marca {'/'.join(DRIVERS)}.")
-    if brand == "tplink":
-        return _tplink_driver(host, admin_password, username)
-    return DRIVERS[brand](host, admin_password, username=username)
-
-
-def _tplink_driver(host: str, admin_password: str, username: str) -> RouterDriver:
-    """TP-Link tiene varios firmwares: elige la implementación según su página de inicio."""
-    from .drivers.tplink_cgi import TPLinkCgiDriver
-    url = host if host.startswith("http") else f"http://{host}"
-    try:
-        html = requests.get(url, timeout=8, allow_redirects=True).text
-    except requests.RequestException as e:
-        raise RouterError(f"No se pudo conectar con {url}: {e}") from e
-    cls = TPLinkCgiDriver if TPLinkCgiDriver.looks_like(html) else TPLinkDriver
+        raise RouterError("No se encontró el router; escribe su IP.")
+    key = (host, brand)
+    cls = _cache.get(key)
+    if cls is None:
+        say(f"Buscando el router en {host}…")
+        html, headers = _fetch(host)          # una sola descarga de la página de inicio
+        if brand is None:
+            say("Detectando la marca…")
+            brand = _brand_from_page(html, headers)
+        if brand not in DRIVERS:
+            raise RouterError(f"No se reconoció la marca del router en {host}. Elige TP-Link o Tenda.")
+        cls = DRIVERS[brand]
+        if brand == "tplink":
+            from .drivers.tplink_cgi import TPLinkCgiDriver
+            if TPLinkCgiDriver.looks_like(html):
+                cls = TPLinkCgiDriver
+        _cache[key] = cls
     return cls(host, admin_password, username=username)

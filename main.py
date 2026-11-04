@@ -77,7 +77,7 @@ KV = """
     size_hint_y: None
     height: dp(32)
     text_size: self.width, None
-    halign: "left"
+    halign: "center"
     bold: True
     font_size: "17sp"
     color: DARK
@@ -124,6 +124,16 @@ KV = """
             pos: self.pos
             size: self.size
             radius: [dp(12)]
+
+<FieldLabel@Label>:
+    size_hint_y: None
+    height: dp(26)
+    color: 0.106, 0.420, 0.208, 1
+    bold: True
+    font_size: "15sp"
+    halign: "center"
+    valign: "bottom"
+    text_size: self.size
 
 <BrandButton@TabButton>:
     group: "brand"
@@ -249,46 +259,66 @@ KV = """
                 height: self.minimum_height if not root.connected else 0
                 opacity: 0 if root.connected else 1
                 disabled: root.connected
-                Section:
-                    text: "Acceder al router"
+                spacing: dp(8)
                 Label:
-                    text: "Conéctate al Wi‑Fi del router y escribe la contraseña de su panel."
-                    color: MUTED
-                    font_size: "14sp"
-                    size_hint_y: None
-                    text_size: self.width, None
-                    height: self.texture_size[1]
-                Field:
-                    id: host
-                    hint_text: "IP del router (ej. 192.168.0.1)"
-                    input_type: "number"
-                    input_filter: lambda t, undo: t if t in "0123456789.:" else ""
-                Field:
-                    id: admin
-                    password: not admin_show.active
-                    hint_text: "Contraseña de administrador"
-                    on_text_validate: root.do_connect()
-                BoxLayout:
+                    text: "Acceder al router"
+                    color: DARK
+                    bold: True
+                    font_size: "22sp"
                     size_hint_y: None
                     height: dp(36)
-                    CheckBox:
-                        id: admin_show
-                        size_hint_x: None
-                        width: dp(44)
-                        color: DARK
-                    Label:
-                        text: "Mostrar contraseña"
-                        color: TEXT
-                        text_size: self.size
-                        valign: "middle"
+                    halign: "center"
+                    text_size: self.width, None
                 Label:
-                    text: "Marca del router"
+                    text: "Conéctate al Wi‑Fi del router y escribe los datos de acceso de su panel."
                     color: MUTED
                     font_size: "14sp"
+                    halign: "center"
                     size_hint_y: None
-                    height: dp(20)
-                    text_size: self.size
-                    halign: "left"
+                    text_size: self.width, None
+                    height: self.texture_size[1] + dp(6)
+                FieldLabel:
+                    text: "IP del router"
+                Field:
+                    id: host
+                    halign: "center"
+                    hint_text: "ej. 192.168.0.1"
+                    input_type: "number"
+                    input_filter: lambda t, undo: t if t in "0123456789.:" else ""
+                FieldLabel:
+                    text: "Usuario"
+                Field:
+                    id: user
+                    halign: "center"
+                    text: "admin"
+                    hint_text: "normalmente admin"
+                FieldLabel:
+                    text: "Contraseña"
+                Field:
+                    id: admin
+                    halign: "center"
+                    password: not admin_show.active
+                    hint_text: "contraseña del panel del router"
+                    on_text_validate: root.do_connect()
+                AnchorLayout:
+                    size_hint_y: None
+                    height: dp(36)
+                    BoxLayout:
+                        size_hint_x: None
+                        width: dp(210)
+                        CheckBox:
+                            id: admin_show
+                            size_hint_x: None
+                            width: dp(40)
+                            color: DARK
+                        Label:
+                            text: "Mostrar contraseña"
+                            color: TEXT
+                            text_size: self.size
+                            halign: "left"
+                            valign: "middle"
+                FieldLabel:
+                    text: "Marca del router"
                 BoxLayout:
                     size_hint_y: None
                     height: dp(48)
@@ -303,10 +333,9 @@ KV = """
                     BrandButton:
                         text: "Tenda"
                         on_state: if self.state == "down": root.brand_choice = "Tenda"
-                Field:
-                    id: user
-                    text: "admin"
-                    hint_text: "Usuario administrador (normalmente admin)"
+                Widget:
+                    size_hint_y: None
+                    height: dp(4)
                 BigButton:
                     text: "Accediendo…" if root.busy else "Conectar"
                     disabled: root.busy
@@ -507,10 +536,20 @@ class Root(BoxLayout):
     def _show_wait(self, text):
         box = BoxLayout(orientation="vertical", padding=dp(16), spacing=dp(10))
         box.add_widget(Label(text=text, font_size="19sp", bold=True, color=DARK))
-        box.add_widget(Label(text="Por favor espera…", color=MUTED, font_size="14sp"))
+        self._wait_step = Label(text="Por favor espera…", color=MUTED, font_size="14sp",
+                                halign="center", valign="middle")
+        self._wait_step.bind(size=lambda w, v: setattr(w, "text_size", v))
+        box.add_widget(self._wait_step)
         self._wait = Popup(title="", separator_height=0, content=box, size_hint=(0.85, None),
                            height=dp(170), auto_dismiss=False)
         self._wait.open()
+
+    @mainthread
+    def _progress(self, text):
+        """Paso actual de una operación larga (se llama desde el hilo de trabajo)."""
+        self._msg(text, ok=None)
+        if getattr(self, "_wait", None) is not None:
+            self._wait_step.text = text
 
     @mainthread
     def _done(self, callback, error):
@@ -584,7 +623,8 @@ class Root(BoxLayout):
     def do_connect(self):
         conn = Connection(self.ids.host.text, BRAND_KEYS[self.brand_choice],
                           self.ids.user.text, self.ids.admin.text)
-        self._run(lambda: connect(conn), lambda nets: self._on_connected(conn, nets), "Accediendo al equipo…")
+        self._run(lambda: connect(conn, self._progress), lambda nets: self._on_connected(conn, nets),
+                  "Accediendo al equipo…")
 
     def _on_connected(self, conn, nets):
         self.conn = conn

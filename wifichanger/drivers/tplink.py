@@ -21,13 +21,25 @@ from ..base import (AuthError, Band, ClientDevice, NotSupportedError, RouterDriv
 
 import requests
 
-try:  # Import perezoso: la app funciona aunque solo se use el driver Tenda.
-    import tplinkrouterc6u
-    from tplinkrouterc6u import Connection, TplinkRouterProvider
-except ImportError:  # pragma: no cover
-    tplinkrouterc6u = None
-    Connection = None
-    TplinkRouterProvider = None
+# La librería tplinkrouterc6u (y su criptografía) se carga solo cuando hace falta:
+# así la app abre más rápido y el WR840N (driver tplink_cgi) no la necesita.
+tplinkrouterc6u = None
+Connection = None
+TplinkRouterProvider = None
+
+
+def _load_lib() -> None:
+    global tplinkrouterc6u, Connection, TplinkRouterProvider
+    if tplinkrouterc6u is not None:
+        return
+    try:
+        import tplinkrouterc6u as lib
+    except ImportError:  # pragma: no cover
+        return
+    tplinkrouterc6u = lib
+    if Connection is None:
+        Connection = lib.Connection
+    TplinkRouterProvider = lib.TplinkRouterProvider
 
 
 def _connection_for(band: Band, guest: bool):
@@ -83,6 +95,7 @@ class TPLinkDriver(RouterDriver):
             raise NotSupportedError(
                 "Este TP-Link tiene el firmware antiguo (panel 'userRpm', p. ej. WR840N v1–v5). "
                 "La app aún no es compatible con esa versión.")
+        _load_lib()
         if TplinkRouterProvider is None:
             raise RouterError("Falta la dependencia: pip install tplinkrouterc6u")
         if "/webpages/" not in page:  # "/webpages/" = firmware luci moderno (Archer C6/AX…)

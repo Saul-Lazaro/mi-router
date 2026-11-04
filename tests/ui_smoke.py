@@ -29,6 +29,7 @@ def poke(dt):
         root.brand_choice = "TP-Link"
         root.ids.admin.focus = False
         root._show_wait("Accediendo al equipo…")
+        root._progress("Buscando el router…")
         root._wait.dismiss()
         root._alert("Prueba", "Mensaje de prueba")
         root._password_popup("Clave cambiada", "Prueba", [("Red · 2.4GHz", "Clave1234")])

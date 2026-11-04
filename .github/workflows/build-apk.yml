@@ -56,6 +56,13 @@ jobs:
           restore-keys: |
             buildozer-${{ runner.os }}-
 
+      # Firma siempre con la misma llave: así cada versión se instala encima de la anterior
+      # (llave de depuración, no secreta; para Play Store se usaría una llave de publicación).
+      - name: Llave de firma fija
+        run: |
+          mkdir -p ~/.android
+          cp .github/keystore/debug.keystore ~/.android/debug.keystore
+
       - name: Compilar APK (debug)
         run: buildozer android debug
 

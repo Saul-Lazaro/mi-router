@@ -76,7 +76,7 @@ class RouterDriver(ABC):
 
     brand: str = "generic"
 
-    def __init__(self, host: str, admin_password: str, username: str = "admin", timeout: int = 15):
+    def __init__(self, host: str, admin_password: str, username: str = "admin", timeout: int = 10):
         self.host = host if host.startswith("http") else f"http://{host}"
         self.admin_password = admin_password
         self.username = username

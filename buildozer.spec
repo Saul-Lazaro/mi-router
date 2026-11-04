@@ -5,7 +5,7 @@ package.domain = com.wifichanger
 source.dir = .
 source.include_exts = py,png
 source.exclude_dirs = tests, bin, .buildozer, .github, .git, __pycache__
-version = 0.7.2
+version = 0.8.0
 
 # Logo de Group S & M - Max's Solution E.I.R.L.
 icon.filename = %(source.dir)s/icon.png
