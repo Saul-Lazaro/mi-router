@@ -40,7 +40,10 @@ def poke(dt):
         for name in ("host", "user", "admin"):
             w = root.ids[name]
             tap(w)
-            assert w.focus, f"el toque no llegó al campo '{name}'"
+            sc = root.ids.scroll; ct = root.ids.content
+            assert w.focus, (f"el toque no llegó al campo '{name}' win={app.root_window.size} "
+                             f"scroll={sc.pos},{sc.size} sy={sc.scroll_y} content={ct.pos},{ct.size} "
+                             f"pad={ct.padding} field={w.pos},{w.size} at={w.to_window(*w.center)}")
             w.focus = False
         tap(root.ids.brand_btn)
         opened = [c for c in app.root_window.children if isinstance(c, Popup)]
