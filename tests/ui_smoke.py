@@ -30,7 +30,21 @@ def tap(widget):
     t.touch_up()
 
 
+_waits = [0]
+
+
 def poke(dt):
+    app = main.App.get_running_app()
+    sc = app.root.ids.scroll if app and app.root else None
+    if sc is None or sc.width < 200 or sc.height < 200:   # la ventana aún no se dibuja
+        _waits[0] += 1
+        if _waits[0] < 30:
+            Clock.schedule_once(poke, 1)
+            return
+    Clock.schedule_once(_poke, 1)                          # un segundo más para que todo se acomode
+
+
+def _poke(dt):
     """Abre las ventanas emergentes y cambia de pestaña para ejercitar todo el KV."""
     try:
         app = main.App.get_running_app()
