@@ -10,6 +10,7 @@ from kivy.metrics import dp
 from kivy.properties import BooleanProperty, ListProperty, NumericProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
+from kivy.uix.togglebutton import ToggleButton
 from kivy.uix.checkbox import CheckBox
 from kivy.uix.label import Label
 from kivy.core.clipboard import Clipboard
@@ -18,7 +19,8 @@ from kivy.uix.textinput import TextInput
 from kivy.utils import escape_markup
 
 from wifichanger.base import RouterError
-from wifichanger.service import (BRAND_KEYS, Connection, change_password, connect, current_passwords,
+from wifichanger.android_wifi import connect_to_wifi
+from wifichanger.service import (BRAND_KEYS, Connection, change_wifi, connect, current_passwords,
                                  list_clients, set_blocked, suggest_host)
 
 Window.softinput_mode = ""  # sin desplazamiento de Kivy: Android ajusta la ventana y los toques llegan al campo correcto
@@ -139,6 +141,26 @@ KV = """
     valign: "bottom"
     text_size: self.size
 
+<NetToggle>:
+    size_hint_y: None
+    height: dp(52)
+    background_normal: ""
+    background_down: ""
+    background_color: 0, 0, 0, 0
+    halign: "center"
+    valign: "middle"
+    text_size: self.width - dp(20), None
+    font_size: "15sp"
+    bold: self.state == "down"
+    color: (1, 1, 1, 1) if self.state == "down" else (0.122, 0.176, 0.141, 1)
+    canvas.before:
+        Color:
+            rgba: (0.180, 0.620, 0.310, 1) if self.state == "down" else (0.93, 0.96, 0.92, 1)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(12)]
+
 <BrandButton@TabButton>:
     group: "brand"
     font_size: "15sp"
@@ -172,13 +194,12 @@ KV = """
             pos: self.pos
             size: self.size
 
-    # ---------- cabecera verde ----------
+    # ---------- franja verde superior (sin logo ni nombre) ----------
     BoxLayout:
-        orientation: "vertical"
         size_hint_y: None
-        height: dp(92) if root.connected else 0
+        height: dp(64) if root.connected else 0
         opacity: 1 if root.connected else 0
-        padding: dp(16), dp(10)
+        padding: dp(16), dp(10), dp(16), dp(12)
         canvas.before:
             Color:
                 rgba: DARK
@@ -190,40 +211,15 @@ KV = """
             Rectangle:
                 pos: self.x, self.y
                 size: self.width, dp(5)
-        BoxLayout:
-            spacing: dp(12)
-            BoxLayout:
-                size_hint_x: None
-                width: dp(56)
-                padding: dp(4)
-                canvas.before:
-                    Color:
-                        rgba: 1, 1, 1, 1
-                    RoundedRectangle:
-                        pos: self.pos
-                        size: self.size
-                        radius: [dp(14)]
-                Image:
-                    source: "logo.png"
-                    allow_stretch: True
-            BoxLayout:
-                orientation: "vertical"
-                Label:
-                    text: "Maxs Wifi"
-                    font_size: "26sp"
-                    bold: True
-                    color: 1, 1, 1, 1
-                    text_size: self.size
-                    halign: "left"
-                    valign: "bottom"
-                Label:
-                    text: ("Conectado a " + root.brand_name + " · " + root.host_shown) if root.connected else "Clave Wi‑Fi y dispositivos · TP-Link · Tenda"
-                    font_size: "13sp"
-                    color: 0.85, 0.95, 0.80, 1
-                    text_size: self.size
-                    halign: "left"
-                    valign: "top"
-                    shorten: True
+        Label:
+            text: ("Conectado a " + root.brand_name + " · " + root.host_shown) if root.connected else ""
+            font_size: "14sp"
+            bold: True
+            color: 0.92, 0.98, 0.88, 1
+            halign: "center"
+            valign: "bottom"
+            text_size: self.size
+            shorten: True
 
     # ---------- pestañas (solo tras conectar) ----------
     BoxLayout:
@@ -248,212 +244,249 @@ KV = """
             on_release: root.disconnect()
 
     ScrollView:
+        id: scroll
         do_scroll_x: False
-        BoxLayout:
-            id: content
-            orientation: "vertical"
-            padding: max(dp(16), (self.width - dp(430)) / 2), (dp(12) if root.connected else dp(40)), max(dp(16), (self.width - dp(430)) / 2), dp(20)
-            spacing: dp(12)
+        AnchorLayout:
+            anchor_y: "center"
             size_hint_y: None
-            height: self.minimum_height
-
-            # ---------- inicio de sesión ----------
-            Card:
-                id: login
-                spacing: dp(8)
-                Label:
-                    text: "Acceder al router"
-                    color: DARK
-                    bold: True
-                    font_size: "20sp"
-                    size_hint_y: None
-                    height: dp(30)
-                    halign: "center"
-                    text_size: self.width, None
-                Label:
-                    text: "Conéctate al Wi‑Fi del router y escribe los datos de su panel."
-                    color: MUTED
-                    font_size: "13sp"
-                    halign: "center"
-                    size_hint_y: None
-                    text_size: self.width, None
-                    height: self.texture_size[1] + dp(6)
-                FieldLabel:
-                    text: "IP del router"
-                Field:
-                    id: host
-                    halign: "center"
-                    hint_text: "ej. 192.168.0.1"
-                    input_filter: lambda t, undo: t if t in "0123456789.:" else ""
-                    text_validate_unfocus: False
-                    on_text_validate: user.focus = True
-                FieldLabel:
-                    text: "Usuario"
-                Field:
-                    id: user
-                    halign: "center"
-                    text: "admin"
-                    hint_text: "normalmente admin"
-                    text_validate_unfocus: False
-                    on_text_validate: admin.focus = True
-                FieldLabel:
-                    text: "Contraseña"
-                PasswordField:
-                    id: admin
-                    halign: "center"
-                    masked: not admin_show.active
-                    hint_text: "contraseña del panel del router"
-                    on_text_validate: root.do_connect()
-                AnchorLayout:
-                    size_hint_y: None
-                    height: dp(30)
-                    BoxLayout:
-                        size_hint_x: None
-                        width: dp(210)
-                        CheckBox:
-                            id: admin_show
-                            size_hint_x: None
-                            width: dp(40)
-                            color: DARK
-                        Label:
-                            text: "Mostrar contraseña"
-                            color: TEXT
-                            text_size: self.size
-                            halign: "left"
-                            valign: "middle"
-                FieldLabel:
-                    text: "Marca del router"
-                Button:
-                    id: brand_btn
-                    text: root.brand_choice + "   \u25BE"
-                    size_hint_y: None
-                    height: dp(44)
-                    font_size: "15sp"
-                    bold: True
-                    color: DARK
-                    background_normal: ""
-                    background_down: ""
-                    background_color: 0, 0, 0, 0
-                    on_release: root.choose_brand()
-                    canvas.before:
-                        Color:
-                            rgba: 1, 1, 1, 1
-                        RoundedRectangle:
-                            pos: self.pos
-                            size: self.size
-                            radius: [dp(12)]
-                        Color:
-                            rgba: 0.80, 0.88, 0.78, 1
-                        Line:
-                            width: dp(1)
-                            rounded_rectangle: (self.x, self.y, self.width, self.height, dp(12))
-                Widget:
-                    size_hint_y: None
-                    height: dp(2)
-                BigButton:
-                    text: "Accediendo…" if root.busy else "Conectar"
-                    disabled: root.busy
-                    on_release: root.do_connect()
-
-            # ---------- pestaña Wi‑Fi ----------
+            height: max(content.height, scroll.height)
             BoxLayout:
+                id: content
                 orientation: "vertical"
-                spacing: dp(14)
+                padding: max(dp(16), (self.width - dp(430)) / 2), (dp(12) if root.connected else dp(28)), max(dp(16), (self.width - dp(430)) / 2), dp(20)
+                spacing: dp(12)
                 size_hint_y: None
-                id: wifi_tab
                 height: self.minimum_height
+
+                # ---------- inicio de sesión ----------
                 Card:
-                    Section:
-                        text: "Mis redes Wi‑Fi"
+                    id: login
+                    spacing: dp(8)
+                    Label:
+                        text: "Acceder al router"
+                        color: DARK
+                        bold: True
+                        font_size: "20sp"
+                        size_hint_y: None
+                        height: dp(30)
+                        halign: "center"
+                        text_size: self.width, None
+                    Label:
+                        text: "Conéctate al Wi‑Fi del router y escribe los datos de su panel."
+                        color: MUTED
+                        font_size: "13sp"
+                        halign: "center"
+                        size_hint_y: None
+                        text_size: self.width, None
+                        height: self.texture_size[1] + dp(6)
+                    FieldLabel:
+                        text: "IP del router"
+                    Field:
+                        id: host
+                        halign: "center"
+                        hint_text: "ej. 192.168.0.1"
+                        input_filter: lambda t, undo: t if t in "0123456789.:" else ""
+                        text_validate_unfocus: False
+                        on_text_validate: user.focus = True
+                    FieldLabel:
+                        text: "Usuario"
+                    Field:
+                        id: user
+                        halign: "center"
+                        text: "admin"
+                        hint_text: "normalmente admin"
+                        text_validate_unfocus: False
+                        on_text_validate: admin.focus = True
+                    FieldLabel:
+                        text: "Contraseña"
+                    PasswordField:
+                        id: admin
+                        halign: "center"
+                        masked: not admin_show.active
+                        hint_text: "contraseña del panel del router"
+                        on_text_validate: root.do_connect()
+                    AnchorLayout:
+                        size_hint_y: None
+                        height: dp(30)
+                        BoxLayout:
+                            size_hint_x: None
+                            width: dp(210)
+                            CheckBox:
+                                id: admin_show
+                                size_hint_x: None
+                                width: dp(40)
+                                color: DARK
+                            Label:
+                                text: "Mostrar contraseña"
+                                color: TEXT
+                                text_size: self.size
+                                halign: "left"
+                                valign: "middle"
+                    FieldLabel:
+                        text: "Marca del router"
+                    Button:
+                        id: brand_btn
+                        text: root.brand_choice
+                        size_hint_y: None
+                        height: dp(44)
+                        font_size: "15sp"
+                        bold: True
+                        color: DARK
+                        background_normal: ""
+                        background_down: ""
+                        background_color: 0, 0, 0, 0
+                        on_release: root.choose_brand()
+                        canvas.before:
+                            Color:
+                                rgba: 1, 1, 1, 1
+                            RoundedRectangle:
+                                pos: self.pos
+                                size: self.size
+                                radius: [dp(12)]
+                            Color:
+                                rgba: 0.80, 0.88, 0.78, 1
+                            Line:
+                                width: dp(1)
+                                rounded_rectangle: (self.x, self.y, self.width, self.height, dp(12))
+                        canvas.after:
+                            Color:
+                                rgba: DARK
+                            Triangle:
+                                points: [self.right - dp(30), self.center_y + dp(4), self.right - dp(16), self.center_y + dp(4), self.right - dp(23), self.center_y - dp(5)]
+                    Widget:
+                        size_hint_y: None
+                        height: dp(2)
+                    BigButton:
+                        text: "Accediendo…" if root.busy else "Conectar"
+                        disabled: root.busy
+                        on_release: root.do_connect()
+
+                # ---------- pestaña Wi‑Fi ----------
+                BoxLayout:
+                    orientation: "vertical"
+                    spacing: dp(14)
+                    size_hint_y: None
+                    id: wifi_tab
+                    height: self.minimum_height
+                    Card:
+                        Section:
+                            text: "Mis redes Wi‑Fi"
+                        Label:
+                            text: "Toca una red para elegirla"
+                            color: MUTED
+                            font_size: "13sp"
+                            size_hint_y: None
+                            height: dp(18)
+                            halign: "center"
+                            text_size: self.size
+                        BoxLayout:
+                            id: nets
+                            orientation: "vertical"
+                            size_hint_y: None
+                            height: self.minimum_height
+                            spacing: dp(8)
+                        SoftButton:
+                            text: "Mostrar contraseña actual"
+                            disabled: root.busy
+                            on_release: root.show_current_password()
+                    Card:
+                        Section:
+                            text: "Nombre y clave"
+                        FieldLabel:
+                            text: "Nombre de la red (SSID)"
+                        Field:
+                            id: new_ssid
+                            hint_text: "nombre de la red Wi‑Fi"
+                        FieldLabel:
+                            text: "Nueva clave"
+                        PasswordField:
+                            id: new_pw
+                            hint_text: "vacío = no cambiar la clave"
+                        PasswordField:
+                            id: confirm
+                            hint_text: "repite la nueva clave"
+                        AnchorLayout:
+                            size_hint_y: None
+                            height: dp(32)
+                            BoxLayout:
+                                size_hint_x: None
+                                width: dp(170)
+                                CheckBox:
+                                    size_hint_x: None
+                                    width: dp(40)
+                                    color: DARK
+                                    on_active: new_pw.masked = confirm.masked = not self.active
+                                Label:
+                                    text: "Mostrar clave"
+                                    color: TEXT
+                                    text_size: self.size
+                                    halign: "left"
+                                    valign: "middle"
+                        BigButton:
+                            text: "Aplicando…" if root.busy else "Guardar cambios"
+                            disabled: root.busy
+                            on_release: root.do_change()
+                        Label:
+                            text: "Al guardar, el celular se conectará solo a la red con el nombre y la clave nuevos."
+                            color: MUTED
+                            font_size: "12sp"
+                            halign: "center"
+                            size_hint_y: None
+                            text_size: self.width, None
+                            height: self.texture_size[1] + dp(4)
+
+                # ---------- pestaña Dispositivos ----------
+                BoxLayout:
+                    orientation: "vertical"
+                    spacing: dp(10)
+                    size_hint_y: None
+                    id: dev_tab
+                    height: self.minimum_height
                     BoxLayout:
-                        id: nets
+                        size_hint_y: None
+                        height: dp(46)
+                        spacing: dp(8)
+                        Section:
+                            text: root.devices_title
+                            height: dp(46)
+                        SoftButton:
+                            text: "Actualizar"
+                            size_hint_x: None
+                            width: dp(118)
+                            height: dp(44)
+                            disabled: root.busy
+                            on_release: root.load_devices()
+                    BoxLayout:
+                        id: devices
                         orientation: "vertical"
                         size_hint_y: None
                         height: self.minimum_height
-                        spacing: dp(2)
-                    SoftButton:
-                        text: "Mostrar contraseña actual"
-                        disabled: root.busy
-                        on_release: root.show_current_password()
-                Card:
-                    Section:
-                        text: "Nueva clave"
-                    PasswordField:
-                        id: new_pw
-                        hint_text: "Nueva clave Wi‑Fi (8 a 63 caracteres)"
-                    PasswordField:
-                        id: confirm
-                        hint_text: "Repite la nueva clave"
-                    BoxLayout:
-                        size_hint_y: None
-                        height: dp(40)
-                        CheckBox:
-                            size_hint_x: None
-                            width: dp(44)
-                            color: DARK
-                            on_active: new_pw.masked = confirm.masked = not self.active
-                        Label:
-                            text: "Mostrar clave"
-                            color: TEXT
-                            text_size: self.size
-                            valign: "middle"
-                    BigButton:
-                        text: "Aplicando…" if root.busy else "Cambiar clave"
-                        disabled: root.busy
-                        on_release: root.do_change()
+                        spacing: dp(10)
 
-            # ---------- pestaña Dispositivos ----------
-            BoxLayout:
-                orientation: "vertical"
-                spacing: dp(10)
-                size_hint_y: None
-                id: dev_tab
-                height: self.minimum_height
-                BoxLayout:
-                    size_hint_y: None
-                    height: dp(46)
-                    spacing: dp(8)
-                    Section:
-                        text: root.devices_title
-                        height: dp(46)
-                    SoftButton:
-                        text: "Actualizar"
-                        size_hint_x: None
-                        width: dp(118)
-                        height: dp(44)
-                        disabled: root.busy
-                        on_release: root.load_devices()
-                BoxLayout:
-                    id: devices
-                    orientation: "vertical"
-                    size_hint_y: None
-                    height: self.minimum_height
-                    spacing: dp(10)
-
-            Label:
-                text: root.status
-                color: root.status_color
-                font_size: "14sp"
-                text_size: self.width, None
-                size_hint_y: None
-                height: (self.texture_size[1] + dp(8)) if root.status else 0
-                halign: "center"
-
-            # ---------- logo grande al pie (inicio de sesión y dentro de la app) ----------
-            Card:
-                padding: dp(12), dp(12)
-                Image:
-                    source: "logo.png"
-                    size_hint_y: None
-                    height: dp(150)
-                    allow_stretch: True
-                    keep_ratio: True
                 Label:
-                    text: "Group S & M · Max's Solution E.I.R.L."
-                    color: MUTED
-                    font_size: "12sp"
+                    text: root.status
+                    color: root.status_color
+                    font_size: "14sp"
+                    text_size: self.width, None
                     size_hint_y: None
-                    height: dp(18)
+                    height: (self.texture_size[1] + dp(8)) if root.status else 0
+                    halign: "center"
+
+                # ---------- logo grande al pie (inicio de sesión y dentro de la app) ----------
+                Card:
+                    padding: dp(12), dp(12)
+                    Image:
+                        source: "logo.png"
+                        size_hint_y: None
+                        height: dp(150)
+                        allow_stretch: True
+                        keep_ratio: True
+                    Label:
+                        text: "Group S & M · Max's Solution E.I.R.L."
+                        color: MUTED
+                        font_size: "12sp"
+                        size_hint_y: None
+                        height: dp(18)
 """
 
 
@@ -496,6 +529,11 @@ class PasswordField(Field):
     def clear(self):
         self.secret = ""
         self._refresh()
+
+
+class NetToggle(ToggleButton):
+    """Red Wi‑Fi como botón: verde = elegida."""
+    pass
 
 
 class RoundButton(Button):
@@ -738,16 +776,25 @@ class Root(BoxLayout):
     def _fill_networks(self, nets):
         self.ids.nets.clear_widgets()
         self.checks = []
+        first = True
         for n in nets:
-            row = BoxLayout(size_hint_y=None, height=dp(44))
-            cb = CheckBox(size_hint_x=None, width=dp(44), active=n.enabled and not n.guest, color=DARK)
             label = f"{n.ssid}  ·  {n.band.value}" + ("  ·  invitados" if n.guest else "")
             if not n.enabled:
                 label += "  (apagada)"
-            row.add_widget(cb)
-            row.add_widget(_wrap_label(label))
-            self.ids.nets.add_widget(row)
-            self.checks.append((cb, n))
+            choose = n.enabled and not n.guest and first
+            btn = NetToggle(text=label, state="down" if choose else "normal")
+            first = first and not choose
+            btn.bind(state=lambda *_: self._prefill_ssid())
+            self.ids.nets.add_widget(btn)
+            self.checks.append((btn, n))
+        self._prefill_ssid()
+
+    def _selected_networks(self):
+        return [n for b, n in self.checks if b.state == "down"]
+
+    def _prefill_ssid(self):
+        sel = self._selected_networks()
+        self.ids.new_ssid.text = sel[0].ssid if sel else ""
 
     def show_current_password(self):
         conn = self.conn
@@ -763,28 +810,51 @@ class Root(BoxLayout):
         self._run(lambda: current_passwords(conn), ok, "Leyendo la clave…")
 
     def do_change(self):
-        selected = [n for cb, n in self.checks if cb.active]
+        selected = self._selected_networks()
+        new_ssid = self.ids.new_ssid.text
         new_pw, confirm = self.ids.new_pw.secret, self.ids.confirm.secret
         conn = self.conn
         names = ", ".join(n.ssid for n in selected) or "—"
 
         def go():
-            self._run(lambda: change_password(conn, selected, new_pw, confirm),
-                      lambda msg: self._changed(msg, selected, new_pw), "Cambiando la clave…")
+            self._run(lambda: change_wifi(conn, selected, new_ssid, new_pw, confirm),
+                      self._changed, "Guardando cambios…")
 
-        if new_pw and new_pw == confirm and selected:
-            self._confirm("Cambiar clave", f"Se cambiará la clave de: {names}.\n\nTodos los equipos "
-                          "conectados (incluido este teléfono, si está en esa red) se desconectarán.",
-                          "Cambiar", BLUE, go)
-        else:
-            go()  # deja que la validación muestre el error
+        if not selected:
+            self._alert("Elige una red", "Toca la red Wi‑Fi que quieres cambiar.")
+            return
+        changes = []
+        if new_ssid.strip() and any(new_ssid.strip() != n.ssid for n in selected):
+            changes.append(f"nombre: {new_ssid.strip()}")
+        if new_pw or confirm:
+            changes.append("clave nueva")
+        if not changes:
+            go()  # muestra "No hay cambios"
+            return
+        self._confirm("Guardar cambios", f"Red: {names}\nCambios: {', '.join(changes)}.\n\n"
+                      "Los equipos conectados se desconectarán. Este celular se volverá a "
+                      "conectar solo con los datos nuevos.", "Guardar", GREEN, go)
 
-    def _changed(self, message, networks, new_pw):
+    def _changed(self, result):
         self.ids.new_pw.clear()
         self.ids.confirm.clear()
-        self._msg(message, ok=True)
-        names = ", ".join(f"{n.ssid} ({n.band.value})" for n in networks)
-        self._password_popup("Clave cambiada", message, [(f"Nueva clave de {names}", new_pw)])
+        self._msg(result["message"], ok=True)
+        how = None
+        if result.get("connect"):
+            try:
+                how = connect_to_wifi(*result["connect"])
+            except Exception as e:  # nunca romper la app por esto
+                how = None
+                self._msg(f"{result['message']} (no se pudo conectar automáticamente: {e})", ok=False)
+        note = {
+            "dialog": "Toca «Guardar» en la ventana de Android: el celular se conectará solo a la red nueva.",
+            "suggestion": "Android conectará el celular a la red nueva automáticamente en unos segundos.",
+            "direct": "El celular se está conectando a la red nueva…",
+        }.get(how, "Conecta el celular a la red con estos datos:")
+        rows = [("Nombre de la red", result["ssid"])]
+        if result.get("password"):
+            rows.append(("Clave", result["password"]))
+        self._password_popup("Cambios guardados", result["message"] + "\n\n" + note, rows)
 
     # --- pestaña Dispositivos ----------------------------------------------
     def show_devices(self):

@@ -6,7 +6,8 @@ from dataclasses import dataclass
 
 import requests
 
-from .base import ClientDevice, NotSupportedError, RouterError, WifiNetwork, validate_wifi_password
+from .base import (Band, ClientDevice, NotSupportedError, RouterError, WifiNetwork, validate_ssid,
+                   validate_wifi_password)
 from .detect import DRIVERS, default_gateway, get_driver
 
 BRAND_KEYS = {"Detectar marca": None, "TP-Link": "tplink", "Tenda": "tenda"}
@@ -46,32 +47,58 @@ def connect(conn: Connection, progress=None) -> list[WifiNetwork]:
     return nets
 
 
-def change_password(conn: Connection, networks: list[WifiNetwork], new_password: str, confirm: str) -> str:
-    """Cambia la clave en las redes elegidas. Devuelve el mensaje para el usuario."""
-    if new_password != confirm:
-        raise ValueError("Las claves no coinciden.")
-    validate_wifi_password(new_password)
+def change_wifi(conn: Connection, networks: list[WifiNetwork], new_ssid: str,
+                new_password: str, confirm: str) -> dict:
+    """Cambia nombre y/o clave de las redes elegidas en una sola operación.
+
+    Devuelve {"message", "ssid", "password", "connect"}: `connect` = (ssid, clave) de la red
+    a la que el celular debe conectarse después (o None si no se conoce la clave)."""
     if not networks:
-        raise ValueError("Marca al menos una red.")
-    driver = get_driver(conn.host.strip(), conn.admin_password, conn.brand_key, conn.username.strip() or "admin")
-    done = "Clave cambiada en " + ", ".join(f"{n.ssid} ({n.band.value})" for n in networks) + "."
+        raise ValueError("Elige al menos una red.")
+    new_ssid = (new_ssid or "").strip()
+    ssid = new_ssid if new_ssid and any(new_ssid != n.ssid for n in networks) else None
+    password = None
+    if new_password or confirm:
+        if new_password != confirm:
+            raise ValueError("Las claves no coinciden.")
+        validate_wifi_password(new_password)
+        password = new_password
+    if ssid is None and password is None:
+        raise ValueError("No hay cambios: escribe un nombre nuevo o una clave nueva.")
+    if ssid is not None:
+        validate_ssid(ssid)
+
+    main = next((n for n in networks if n.band == Band.B24 and not n.guest), networks[0])
+    final_ssid = ssid or main.ssid
+    final_pw = password if password is not None else main.password
+    what = " y ".join(x for x in (("nombre" if ssid else ""), ("clave" if password else "")) if x)
+    names = ", ".join(f"{n.ssid} ({n.band.value})" for n in networks)
+    result = {"ssid": final_ssid, "password": final_pw,
+              "connect": (final_ssid, final_pw) if final_pw else None,
+              "message": f"Se cambió {what} de {names}."}
+
+    driver = _driver(conn)
     try:
         driver.login()
         for guest in (False, True):
             bands = [n.band for n in networks if n.guest == guest]
             if bands:
-                driver.set_wifi_passwords(bands, new_password, guest=guest)
+                driver.apply_wifi_settings(bands, ssid=ssid, password=password, guest=guest)
     except (requests.ConnectionError, requests.Timeout):
         # El router suele aplicar el cambio y cortar el Wi‑Fi antes de responder.
-        return ("El router cortó la conexión al aplicar el cambio (es normal si este teléfono "
-                "estaba en esa red). Reconéctate con la nueva clave y vuelve a pulsar Conectar "
-                "para comprobarlo.")
+        result["message"] = (f"El router aplicó el cambio de {what} y cortó la conexión "
+                             "(es normal si este celular estaba en esa red).")
     finally:
         try:
             driver.logout()
         except Exception:
             pass
-    return done + " Los equipos conectados deberán reconectarse con la nueva clave."
+    return result
+
+
+def change_password(conn: Connection, networks: list[WifiNetwork], new_password: str, confirm: str) -> str:
+    """Compatibilidad: solo la clave."""
+    return change_wifi(conn, networks, "", new_password, confirm)["message"]
 
 
 def current_passwords(conn: Connection) -> list[WifiNetwork]:

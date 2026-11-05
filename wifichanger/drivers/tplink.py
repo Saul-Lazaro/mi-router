@@ -17,7 +17,8 @@ import json
 from urllib.parse import quote
 
 from ..base import (AuthError, Band, ClientDevice, NotSupportedError, RouterDriver, RouterError,
-                    WifiNetwork, local_ip_for, normalize_mac, validate_wifi_password)
+                    WifiNetwork, local_ip_for, normalize_mac, validate_ssid,
+                    validate_wifi_password)
 
 import requests
 
@@ -133,14 +134,15 @@ class TPLinkDriver(RouterDriver):
                                     password=item.get("X_TP_PreSharedKey")))
         return nets
 
-    def _gdpr_set_password(self, bands: list[Band], new_password: str) -> None:
+    def _gdpr_set_password(self, bands: list[Band], new_password: str | None, ssid: str | None = None) -> None:
         act = self._client.ActItem
         acts = []
         for band in dict.fromkeys(bands):
             if band not in self.WLAN_STACK:
                 raise NotSupportedError(f"Este modelo no tiene banda {band.value}.")
-            acts.append(act(act.SET, "LAN_WLAN", self.WLAN_STACK[band],
-                            attrs=[f"X_TP_PreSharedKey={new_password}"]))
+            attrs = ([f"SSID={ssid}"] if ssid is not None else []) + \
+                    ([f"X_TP_PreSharedKey={new_password}"] if new_password is not None else [])
+            acts.append(act(act.SET, "LAN_WLAN", self.WLAN_STACK[band], attrs=attrs))
         try:
             self._client.req_act(acts)
         except (requests.ConnectionError, requests.Timeout):
@@ -217,6 +219,28 @@ class TPLinkDriver(RouterDriver):
             validate_wifi_password(new_password)
             return self._gdpr_set_password(bands, new_password)  # una sola petición
         super().set_wifi_passwords(bands, new_password, guest)
+
+    def apply_wifi_settings(self, bands: list[Band], ssid: str | None = None,
+                            password: str | None = None, guest: bool = False) -> None:
+        if password is not None:
+            validate_wifi_password(password)
+        if ssid is not None:
+            validate_ssid(ssid)
+        if self._is_gdpr():
+            if guest:
+                raise NotSupportedError("La red de invitados aún no está soportada en este modelo.")
+            return self._gdpr_set_password(bands, password, ssid)  # una sola petición
+        set_wifi = getattr(self._client, "set_wifi", None)
+        params = inspect.signature(set_wifi).parameters if set_wifi else {}
+        if (ssid is not None and "ssid" not in params) or (password is not None and "psk_key" not in params):
+            raise NotSupportedError(f"El cliente {type(self._client).__name__} de este modelo no permite este cambio.")
+        for band in dict.fromkeys(bands):
+            kw = {}
+            if ssid is not None:
+                kw["ssid"] = quote(ssid, safe="")
+            if password is not None:
+                kw["psk_key"] = quote(password, safe="")
+            self._client.set_wifi(_connection_for(band, guest), **kw)
 
     def _ac(self, form: str, data: str):
         request = getattr(self._client, "request", None)

@@ -59,6 +59,16 @@ class NotSupportedError(RouterError):
     """El modelo o firmware no permite esta operación por API."""
 
 
+def validate_ssid(ssid: str) -> None:
+    """Nombre de red Wi‑Fi: 1 a 32 bytes (UTF‑8)."""
+    if not ssid or not ssid.strip():
+        raise ValueError("Escribe el nombre de la red Wi‑Fi.")
+    if len(ssid.encode("utf-8")) > 32:
+        raise ValueError("El nombre de la red es demasiado largo (máximo 32 caracteres).")
+    if any(ord(c) < 32 for c in ssid):
+        raise ValueError("El nombre de la red tiene caracteres no válidos.")
+
+
 def validate_wifi_password(password: str) -> None:
     """Reglas WPA/WPA2/WPA3-Personal: 8-63 caracteres ASCII imprimibles
     (o exactamente 64 dígitos hexadecimales)."""
@@ -95,6 +105,15 @@ class RouterDriver(ABC):
 
     @abstractmethod
     def set_wifi_password(self, band: Band, new_password: str, guest: bool = False) -> None: ...
+
+    def apply_wifi_settings(self, bands: list[Band], ssid: str | None = None,
+                            password: str | None = None, guest: bool = False) -> None:
+        """Cambia nombre (SSID) y/o clave de las bandas indicadas. Cada driver lo hace en una
+        sola petición cuando puede, para que el router aplique todo de una vez."""
+        if ssid is not None:
+            raise NotSupportedError(f"{self.brand}: cambiar el nombre de la red no está soportado en este modelo.")
+        if password is not None:
+            self.set_wifi_passwords(bands, password, guest)
 
     def set_wifi_passwords(self, bands: list[Band], new_password: str, guest: bool = False) -> None:
         """Cambia varias bandas. Los drivers que puedan hacerlo en una sola petición

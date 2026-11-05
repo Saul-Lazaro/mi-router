@@ -220,8 +220,8 @@ def test_service_router_drops_connection(tenda_host, monkeypatch):
 
     def boom(*a, **k):
         raise requests.ConnectionError("reset")
-    monkeypatch.setattr(TendaDriver, "set_wifi_passwords", boom)
-    assert "Reconéctate" in service.change_password(conn, nets, "abcdefgh", "abcdefgh")
+    monkeypatch.setattr(TendaDriver, "apply_wifi_settings", boom)
+    assert "cortó la conexión" in service.change_password(conn, nets, "abcdefgh", "abcdefgh")
 
 
 # ------------------------------------------------ dispositivos y bloqueo: Tenda
@@ -534,3 +534,47 @@ def test_current_passwords(tenda_host, wr840n):
     FakeWR840N.st["psk"] = "clave840"
     w = service.current_passwords(service.Connection(wr840n, "tplink", "admin", ADMIN))
     assert w[0].password == "clave840"
+
+
+
+# ------------------------------------------------ cambiar nombre (SSID) + clave
+def test_tenda_rename_and_password(tenda_host):
+    conn = service.Connection(tenda_host, "tenda", "admin", ADMIN)
+    nets = service.connect(conn)
+    r = service.change_wifi(conn, [nets[0]], "MiCasa Nueva", "Clave1234", "Clave1234")
+    post = FakeTenda.last_post
+    assert post["ssid"] == "MiCasa Nueva" and post["wrlPwd"] == "Clave1234"
+    assert post["ssid_5g"] == "Casa_5G"                     # la otra banda no se tocó
+    assert r["connect"] == ("MiCasa Nueva", "Clave1234")
+
+
+def test_rename_only_keeps_password_for_autoconnect(tenda_host):
+    conn = service.Connection(tenda_host, "tenda", "admin", ADMIN)
+    nets = service.connect(conn)
+    r = service.change_wifi(conn, [nets[0]], "SoloNombre", "", "")
+    assert FakeTenda.last_post["wrlPwd"] == "vieja1234"
+    assert r["connect"] == ("SoloNombre", "vieja1234")
+
+
+def test_no_changes_rejected(tenda_host):
+    conn = service.Connection(tenda_host, "tenda", "admin", ADMIN)
+    nets = service.connect(conn)
+    with pytest.raises(ValueError, match="No hay cambios"):
+        service.change_wifi(conn, [nets[0]], nets[0].ssid, "", "")
+
+
+def test_wr840n_rename(wr840n):
+    conn = service.Connection(wr840n, "tplink", "admin", ADMIN)
+    nets = service.connect(conn)
+    service.change_wifi(conn, nets, "Casa 3", "Nueva12345", "Nueva12345")
+    sets = [l for l in FakeWR840N.st["log"] if l[0] == "2" and l[1] == "LAN_WLAN"]
+    assert sets[-1][4] == {"SSID": "Casa 3", "X_TP_PreSharedKey": "Nueva12345"}
+
+
+def test_ssid_validation():
+    from wifichanger.base import validate_ssid
+    with pytest.raises(ValueError):
+        validate_ssid("x" * 33)
+    with pytest.raises(ValueError):
+        validate_ssid("   ")
+    validate_ssid("Casa de Saúl")

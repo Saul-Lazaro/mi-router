@@ -21,7 +21,8 @@ import re
 import requests
 
 from ..base import (AuthError, Band, ClientDevice, NotSupportedError, RouterError,
-                    WifiNetwork, local_ip_for, normalize_mac, validate_wifi_password)
+                    WifiNetwork, local_ip_for, normalize_mac, validate_ssid,
+                    validate_wifi_password)
 from .tplink import TPLinkDriver
 
 GET, SET, ADD, DEL, GL, GS = 1, 2, 3, 4, 5, 6
@@ -162,7 +163,15 @@ class TPLinkCgiDriver(TPLinkDriver):
         self.set_wifi_passwords([band], new_password, guest)
 
     def set_wifi_passwords(self, bands: list[Band], new_password: str, guest: bool = False) -> None:
-        validate_wifi_password(new_password)
+        self.apply_wifi_settings(bands, password=new_password, guest=guest)
+
+    def apply_wifi_settings(self, bands: list[Band], ssid: str | None = None,
+                            password: str | None = None, guest: bool = False) -> None:
+        if password is not None:
+            validate_wifi_password(password)
+        if ssid is not None:
+            validate_ssid(ssid)
+        new_password = password
         if guest:
             raise NotSupportedError("Cambiar la clave de la red de invitados aún no está soportado en este modelo.")
         wlans = {_band_of(w): w for w in self._wlans()}
@@ -171,16 +180,22 @@ class TPLinkCgiDriver(TPLinkDriver):
             w = wlans.get(band)
             if w is None:
                 raise NotSupportedError(f"Este router no tiene red de {band.value}.")
-            if str(_g(w, "BeaconType")).lower() in PSK_BEACONS:
-                attrs = [f"X_TP_PreSharedKey={new_password}"]
+            attrs = [f"SSID={ssid}"] if ssid is not None else []
+            if new_password is None:
+                pass
+            elif str(_g(w, "BeaconType")).lower() in PSK_BEACONS:
+                attrs.append(f"X_TP_PreSharedKey={new_password}")
             else:  # red abierta o WEP -> WPA/WPA2-PSK, igual que el panel web
-                attrs = ["BeaconType=WPAand11i", "WPAEncryptionModes=AESEncryption",
-                         "WPAAuthenticationMode=PSKAuthentication",
-                         "IEEE11iAuthenticationMode=PSKAuthentication",
-                         "IEEE11iEncryptionModes=AESEncryption",
-                         f"X_TP_PreSharedKey={new_password}", "X_TP_GroupKeyUpdateInterval=0"]
+                attrs += ["BeaconType=WPAand11i", "WPAEncryptionModes=AESEncryption",
+                          "WPAAuthenticationMode=PSKAuthentication",
+                          "IEEE11iAuthenticationMode=PSKAuthentication",
+                          "IEEE11iEncryptionModes=AESEncryption",
+                          f"X_TP_PreSharedKey={new_password}", "X_TP_GroupKeyUpdateInterval=0"]
+            if not attrs:
+                continue
             acts.append((SET, "LAN_WLAN", w["__stack"], None, attrs))
-        self._req(acts)  # una sola petición para todas las bandas
+        if acts:
+            self._req(acts)  # una sola petición para todas las bandas
 
     # --- dispositivos -------------------------------------------------------
     def _snapshot(self):

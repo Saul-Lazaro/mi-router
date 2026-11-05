@@ -66,6 +66,18 @@ def poke(dt):
         from wifichanger.base import Band, ClientDevice, WifiNetwork
         root._on_connected(type("C", (), {"brand_name": "TP-Link", "host": "192.168.0.1"})(),
                            [WifiNetwork(Band.B24, "Casa", True, "WPA2", password="x")])
+        # pestaña Wi-Fi: elegir red con un toque, nombre precargado, ventana final
+        net_btn = root.checks[0][0]
+        assert root.ids.new_ssid.text == "Casa"
+        tap(net_btn)
+        assert net_btn.state == "normal"
+        tap(net_btn)
+        assert net_btn.state == "down" and root.ids.new_ssid.text == "Casa"
+        tap(root.ids.new_ssid)
+        assert root.ids.new_ssid.focus, "el toque no llegó al campo del nombre de red"
+        root.ids.new_ssid.focus = False
+        root._changed({"message": "Se cambió nombre y clave de Casa (2.4GHz).",
+                       "ssid": "Casa 2", "password": "Clave1234", "connect": ("Casa 2", "Clave1234")})
         root.tab = "devices"
         root._fill_devices([ClientDevice("aa:bb:cc:dd:ee:ff", "192.168.0.5", "PC", "2.4GHz"),
                             ClientDevice("11:22:33:44:55:66", "", "Bloq", "", blocked=True)])

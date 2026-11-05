@@ -21,7 +21,8 @@ import random
 import requests
 
 from ..base import (AuthError, Band, ClientDevice, NotSupportedError, RouterDriver, RouterError,
-                    WifiNetwork, local_ip_for, normalize_mac, validate_wifi_password)
+                    WifiNetwork, local_ip_for, normalize_mac, validate_ssid,
+                    validate_wifi_password)
 
 # Campos por banda en WifiBasicGet/Set
 FIELDS = {
@@ -100,8 +101,15 @@ class TendaDriver(RouterDriver):
         self.set_wifi_passwords([band], new_password, guest)
 
     def set_wifi_passwords(self, bands: list[Band], new_password: str, guest: bool = False) -> None:
-        """Todas las bandas en una sola petición WifiBasicSet."""
-        validate_wifi_password(new_password)
+        self.apply_wifi_settings(bands, password=new_password, guest=guest)
+
+    def apply_wifi_settings(self, bands: list[Band], ssid: str | None = None,
+                            password: str | None = None, guest: bool = False) -> None:
+        """Nombre y/o clave de todas las bandas en una sola petición WifiBasicSet."""
+        if password is not None:
+            validate_wifi_password(password)
+        if ssid is not None:
+            validate_ssid(ssid)
         if guest:
             raise NotSupportedError("La red de invitados de Tenda usa otro endpoint (GuestSet); aún no implementado.")
         for band in bands:
@@ -118,9 +126,12 @@ class TendaDriver(RouterDriver):
 
         for b in bands:
             f = FIELDS[b]
-            payload[f["pwd"]] = new_password
-            if payload.get(f["security"], "none") in ("none", ""):
-                payload[f["security"]] = DEFAULT_SECURITY  # red abierta -> pasa a WPA/WPA2
+            if ssid is not None:
+                payload[f["ssid"]] = ssid
+            if password is not None:
+                payload[f["pwd"]] = password
+                if payload.get(f["security"], "none") in ("none", ""):
+                    payload[f["security"]] = DEFAULT_SECURITY  # red abierta -> pasa a WPA/WPA2
 
         self._post("WifiBasicSet", payload)
 
