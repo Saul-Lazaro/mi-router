@@ -31,10 +31,6 @@ def poke(dt):
         root = app.root
         # toques reales: cada campo debe recibir el foco (= aparece el teclado) y el combo abrir
         from kivy.uix.popup import Popup
-        sc = root.ids.scroll; ct = root.ids.content; anc = ct.parent
-        print("DEBUG window", app.root_window.size, "scroll", sc.pos, sc.size, "scroll_y", sc.scroll_y,
-              "anchor", anc.pos, anc.size, "content", ct.pos, ct.size,
-              "host", root.ids.host.pos, root.ids.host.size, "host_win", root.ids.host.to_window(*root.ids.host.center))
         for name in ("host", "user", "admin"):
             w = root.ids[name]
             tap(w)
