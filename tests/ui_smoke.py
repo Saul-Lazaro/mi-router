@@ -74,7 +74,7 @@ def poke(dt):
         for ch in "juliolazaro1983":
             uf.insert_text(ch)
         root._unlock_ok.dispatch("on_release")
-        assert root.unlocked, "la contraseña correcta debe desbloquear"
+        assert root.unlocked, f"la contraseña correcta debe desbloquear (secret={uf.secret!r} text={uf.text!r})"
         assert root.ids.unlock_btn.text == "Modo técnico activo"
         root.choose_brand()
         root.brand_choice = "TP-Link"
