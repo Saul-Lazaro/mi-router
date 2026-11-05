@@ -107,9 +107,18 @@ def wifi_taps(dt):
         assert net_btn.state == "normal"
         tap(net_btn)
         assert net_btn.state == "down" and root.ids.new_ssid.text == "Casa"
+        # el nombre de la red está bloqueado hasta tocar "Cambiar"
+        tap(root.ids.new_ssid)
+        assert not root.ids.new_ssid.focus and root.ids.new_ssid.disabled, "el nombre debería estar bloqueado"
+        tap(root.ids.ssid_btn)
+        assert root.ssid_edit and not root.ids.new_ssid.disabled, "Cambiar no habilitó el nombre"
+        assert root.ids.ssid_btn.text == "Cancelar"
         tap(root.ids.new_ssid)
         assert root.ids.new_ssid.focus, "el toque no llegó al campo del nombre de red"
         root.ids.new_ssid.focus = False
+        root.ids.new_ssid.text = "Otro nombre"
+        tap(root.ids.ssid_btn)                       # Cancelar: vuelve al nombre actual y bloquea
+        assert not root.ssid_edit and root.ids.new_ssid.text == "Casa"
         root._changed({"message": "Se cambió nombre y clave de Casa (2.4GHz).",
                        "ssid": "Casa 2", "password": "Clave1234", "connect": ("Casa 2", "Clave1234")})
         root.tab = "devices"

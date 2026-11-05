@@ -3,7 +3,7 @@ cambiar la clave Wi‑Fi, ver quién está conectado y bloquear o desbloquear eq
 import threading
 
 from kivy.app import App
-from kivy.clock import mainthread
+from kivy.clock import Clock, mainthread
 from kivy.core.window import Window
 from kivy.lang import Builder
 from kivy.metrics import dp
@@ -65,7 +65,8 @@ KV = """
     padding: [dp(12), dp(11)]
     background_normal: ""
     background_active: ""
-    background_color: 1, 1, 1, 1
+    background_color: (0.93, 0.95, 0.92, 1) if self.disabled else (1, 1, 1, 1)
+    disabled_foreground_color: TEXT
     foreground_color: TEXT
     hint_text_color: MUTED
     cursor_color: GREEN
@@ -390,9 +391,22 @@ KV = """
                         text: "Nombre y clave"
                     FieldLabel:
                         text: "Nombre de la red (SSID)"
-                    Field:
-                        id: new_ssid
-                        hint_text: "nombre de la red Wi‑Fi"
+                    BoxLayout:
+                        size_hint_y: None
+                        height: dp(44)
+                        spacing: dp(8)
+                        Field:
+                            id: new_ssid
+                            hint_text: "nombre de la red Wi‑Fi"
+                            disabled: not root.ssid_edit
+                        RoundButton:
+                            id: ssid_btn
+                            text: "Cancelar" if root.ssid_edit else "Cambiar"
+                            bg: (0.55, 0.60, 0.57, 1) if root.ssid_edit else (0.180, 0.620, 0.310, 1)
+                            size_hint_x: None
+                            width: dp(100)
+                            font_size: "15sp"
+                            on_release: root.toggle_ssid_edit()
                     FieldLabel:
                         text: "Nueva clave"
                     PasswordField:
@@ -590,6 +604,7 @@ class Root(BoxLayout):
     status = StringProperty("")
     brand_choice = StringProperty("Detectar marca")
     top_pad = NumericProperty(dp(28))
+    ssid_edit = BooleanProperty(False)   # el nombre de la red solo se edita tras tocar "Cambiar"
     status_color = ListProperty(list(MUTED))
 
     def __init__(self, **kw):
@@ -803,7 +818,19 @@ class Root(BoxLayout):
 
     def _prefill_ssid(self):
         sel = self._selected_networks()
+        self.ssid_edit = False                      # al cambiar de red, el nombre vuelve a bloquearse
         self.ids.new_ssid.text = sel[0].ssid if sel else ""
+
+    def toggle_ssid_edit(self):
+        if self.ssid_edit:                          # Cancelar: vuelve al nombre actual y bloquea
+            self._prefill_ssid()
+            return
+        if not self._selected_networks():
+            self._alert("Elige una red", "Toca primero la red Wi‑Fi cuyo nombre quieres cambiar.")
+            return
+        self.ssid_edit = True
+        field = self.ids.new_ssid
+        Clock.schedule_once(lambda dt: setattr(field, "focus", True), 0.1)
 
     def show_current_password(self):
         conn = self.conn
@@ -820,7 +847,7 @@ class Root(BoxLayout):
 
     def do_change(self):
         selected = self._selected_networks()
-        new_ssid = self.ids.new_ssid.text
+        new_ssid = self.ids.new_ssid.text if self.ssid_edit else ""
         new_pw, confirm = self.ids.new_pw.secret, self.ids.confirm.secret
         conn = self.conn
         names = ", ".join(n.ssid for n in selected) or "—"
@@ -847,6 +874,7 @@ class Root(BoxLayout):
     def _changed(self, result):
         self.ids.new_pw.clear()
         self.ids.confirm.clear()
+        self.ssid_edit = False
         self._msg(result["message"], ok=True)
         how = None
         if result.get("connect"):
