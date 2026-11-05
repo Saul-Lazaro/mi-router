@@ -578,3 +578,33 @@ def test_ssid_validation():
     with pytest.raises(ValueError):
         validate_ssid("   ")
     validate_ssid("Casa de Saúl")
+
+
+# ------------------------------------------------ verificación del proveedor y desbloqueo
+from wifichanger import isp
+
+
+def test_unlock_password():
+    assert isp.check_unlock_password("juliolazaro1983")
+    assert not isp.check_unlock_password("juliolazaro1984")
+    assert not isp.check_unlock_password("")
+
+
+def test_isp_reachable_local():
+    assert isp.isp_reachable("127.0.0.1", timeout=1)
+
+
+def test_isp_unreachable_when_ping_fails(monkeypatch):
+    monkeypatch.setattr(isp, "_ping", lambda host, timeout: False)
+    assert not isp.isp_reachable("10.99.0.1", timeout=1)      # ping sin respuesta = sin proveedor
+
+
+def test_isp_ok_when_ping_answers(monkeypatch):
+    monkeypatch.setattr(isp, "_ping", lambda host, timeout: True)
+    assert isp.isp_reachable("10.99.0.1", timeout=1)
+
+
+def test_isp_tcp_fallback_only_without_ping(monkeypatch):
+    monkeypatch.setattr(isp, "_ping", lambda host, timeout: None)
+    monkeypatch.setattr(isp, "_tcp_probe", lambda host, timeout: False)
+    assert not isp.isp_reachable("10.99.0.1", timeout=1)

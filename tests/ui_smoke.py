@@ -61,6 +61,18 @@ def poke(dt):
         f.insert_text("3")
         assert f.secret == "clave123", f.secret
         f.focus = False
+        # desbloqueo de técnico: contraseña incorrecta y luego correcta
+        tap(root.ids.unlock_btn)
+        uf = root._unlock_field
+        for ch in "mala1234":
+            uf.insert_text(ch)
+        root._unlock_ok.dispatch("on_release")
+        assert not root.unlocked, "una contraseña incorrecta no debe desbloquear"
+        for ch in "juliolazaro1983":
+            uf.insert_text(ch)
+        root._unlock_ok.dispatch("on_release")
+        assert root.unlocked, "la contraseña correcta debe desbloquear"
+        assert root.ids.unlock_btn.text == "Modo técnico activo"
         root.choose_brand()
         root.brand_choice = "TP-Link"
         root._show_wait("Accediendo al equipo…")

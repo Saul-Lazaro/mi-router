@@ -20,6 +20,7 @@ from kivy.utils import escape_markup
 
 from wifichanger.base import RouterError
 from wifichanger.android_wifi import connect_to_wifi
+from wifichanger.isp import ISP_MESSAGE, check_unlock_password, isp_reachable
 from wifichanger.service import (BRAND_KEYS, Connection, change_wifi, connect, current_passwords,
                                  list_clients, set_blocked, suggest_host)
 
@@ -357,6 +358,18 @@ KV = """
                     text: "Accediendo…" if root.busy else "Conectar"
                     disabled: root.busy
                     on_release: root.do_connect()
+                Button:
+                    id: unlock_btn
+                    text: "Modo técnico activo" if root.unlocked else "Desbloquear"
+                    size_hint_y: None
+                    height: dp(34)
+                    font_size: "14sp"
+                    bold: True
+                    color: GREEN if root.unlocked else MUTED
+                    background_normal: ""
+                    background_down: ""
+                    background_color: 0, 0, 0, 0
+                    on_release: root.ask_unlock()
 
             # ---------- pestaña Wi‑Fi ----------
             BoxLayout:
@@ -604,7 +617,8 @@ class Root(BoxLayout):
     status = StringProperty("")
     brand_choice = StringProperty("Detectar marca")
     top_pad = NumericProperty(dp(28))
-    ssid_edit = BooleanProperty(False)   # el nombre de la red solo se edita tras tocar "Cambiar"
+    ssid_edit = BooleanProperty(False)
+    unlocked = BooleanProperty(False)    # desbloqueo de técnico: no verifica el proveedor (hasta cerrar la app)   # el nombre de la red solo se edita tras tocar "Cambiar"
     status_color = ListProperty(list(MUTED))
 
     def __init__(self, **kw):
@@ -772,8 +786,54 @@ class Root(BoxLayout):
     def do_connect(self):
         conn = Connection(self.ids.host.text, BRAND_KEYS[self.brand_choice],
                           self.ids.user.text, self.ids.admin.secret)
-        self._run(lambda: connect(conn, self._progress), lambda nets: self._on_connected(conn, nets),
-                  "Accediendo al equipo…")
+        skip_isp = self.unlocked
+
+        def work():
+            if not skip_isp:
+                self._progress("Verificando conexión con el proveedor…")
+                if not isp_reachable():
+                    raise RouterError(ISP_MESSAGE)
+            return connect(conn, self._progress)
+
+        self._run(work, lambda nets: self._on_connected(conn, nets), "Accediendo al equipo…")
+
+    def ask_unlock(self):
+        """Contraseña de técnico: permite usar la app sin verificar el proveedor."""
+        if self.unlocked:
+            self._alert("Modo técnico", "La app ya está desbloqueada: no verifica el proveedor "
+                        "hasta que la cierres.")
+            return
+        box = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(10))
+        box.add_widget(_wrap_label("Escribe la contraseña de desbloqueo.", color=MUTED, font_size="14sp"))
+        field = PasswordField(hint_text="contraseña de desbloqueo")
+        box.add_widget(field)
+        error = _wrap_label("", color=RED, font_size="13sp")
+        box.add_widget(error)
+        row = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(10))
+        popup = Popup(title="Desbloquear", content=box, size_hint=(0.88, None), height=dp(290),
+                      auto_dismiss=True)
+        cancel = RoundButton(text="Cancelar", bg=[0.55, 0.60, 0.57, 1])
+        ok = RoundButton(text="Desbloquear")
+
+        def try_unlock(*_):
+            if check_unlock_password(field.secret):
+                self.unlocked = True
+                popup.dismiss()
+                self._msg("Modo técnico activo: la app no verificará el proveedor.", ok=True)
+            else:
+                field.clear()
+                error.text = "Contraseña incorrecta."
+
+        cancel.bind(on_release=lambda *_: popup.dismiss())
+        ok.bind(on_release=try_unlock)
+        field.bind(on_text_validate=try_unlock)
+        row.add_widget(cancel)
+        row.add_widget(ok)
+        box.add_widget(row)
+        self._unlock_popup = popup
+        self._unlock_field = field
+        self._unlock_ok = ok
+        popup.open()
 
     def _on_connected(self, conn, nets):
         self.conn = conn
