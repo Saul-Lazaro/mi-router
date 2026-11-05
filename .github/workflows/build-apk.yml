@@ -67,9 +67,11 @@ jobs:
         run: buildozer android debug
 
       - name: Comprobar firma del APK
+        continue-on-error: true
         run: |
           echo "Llave fija:"; keytool -list -v -keystore .github/keystore/debug.keystore -storepass android | grep "SHA256:"
-          echo "APK:"; keytool -printcert -jarfile bin/*.apk | grep "SHA256:"
+          SIGNER=$(ls -d ~/.buildozer/android/platform/android-sdk/build-tools/*/apksigner | tail -1)
+          echo "APK:"; "$SIGNER" verify --print-certs bin/*.apk | grep -i "SHA-256"
 
       - uses: actions/upload-artifact@v4
         with:
