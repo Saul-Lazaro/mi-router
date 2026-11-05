@@ -66,12 +66,19 @@ jobs:
       - name: Compilar APK (debug)
         run: buildozer android debug
 
-      - name: Comprobar firma del APK
-        continue-on-error: true
+      # Re-firma SIEMPRE con la llave fija del repositorio: así cada versión se instala
+      # encima de la anterior (Buildozer firma con una llave propia que puede cambiar).
+      - name: Firmar con la llave fija
         run: |
+          BT=$(ls -d ~/.buildozer/android/platform/android-sdk/build-tools/* | sort -V | tail -1)
+          for apk in bin/*.apk; do
+            "$BT/apksigner" sign --ks .github/keystore/debug.keystore --ks-pass pass:android \
+              --key-pass pass:android --ks-key-alias androiddebugkey "$apk"
+          done
           echo "Llave fija:"; keytool -list -v -keystore .github/keystore/debug.keystore -storepass android | grep "SHA256:"
-          SIGNER=$(ls -d ~/.buildozer/android/platform/android-sdk/build-tools/*/apksigner | tail -1)
-          echo "APK:"; "$SIGNER" verify --print-certs bin/*.apk | grep -i "SHA-256"
+          echo "APK:"; "$BT/apksigner" verify --print-certs bin/*.apk | grep -i "SHA-256"
+          EXPECTED=$(keytool -list -v -keystore .github/keystore/debug.keystore -storepass android | grep "SHA256:" | sed 's/.*SHA256: //; s/://g' | tr 'A-F' 'a-f')
+          "$BT/apksigner" verify --print-certs bin/*.apk | grep -qi "$EXPECTED" && echo "FIRMA OK (llave fija)"
 
       - uses: actions/upload-artifact@v4
         with:
