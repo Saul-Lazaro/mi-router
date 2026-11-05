@@ -66,6 +66,11 @@ jobs:
       - name: Compilar APK (debug)
         run: buildozer android debug
 
+      - name: Comprobar firma del APK
+        run: |
+          echo "Llave fija:"; keytool -list -v -keystore .github/keystore/debug.keystore -storepass android | grep "SHA256:"
+          echo "APK:"; keytool -printcert -jarfile bin/*.apk | grep "SHA256:"
+
       - uses: actions/upload-artifact@v4
         with:
           name: mi-router-apk

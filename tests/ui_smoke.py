@@ -15,11 +15,32 @@ import main  # noqa: E402
 errors = []
 
 
+def tap(widget):
+    """Toque real (down + up) en el centro del widget, como un dedo en la pantalla."""
+    from kivy.tests.common import UnitTestTouch
+    x, y = widget.to_window(*widget.center)
+    t = UnitTestTouch(x, y)
+    t.touch_down()
+    t.touch_up()
+
+
 def poke(dt):
     """Abre las ventanas emergentes y cambia de pestaña para ejercitar todo el KV."""
     try:
         app = main.App.get_running_app()
         root = app.root
+        # toques reales: cada campo debe recibir el foco (= aparece el teclado) y el combo abrir
+        from kivy.uix.popup import Popup
+        for name in ("host", "user", "admin"):
+            w = root.ids[name]
+            tap(w)
+            assert w.focus, f"el toque no llegó al campo '{name}'"
+            w.focus = False
+        tap(root.ids.brand_btn)
+        opened = [c for c in app.root_window.children if isinstance(c, Popup)]
+        assert opened, "el combo de marca no abrió la lista"
+        opened[0].dismiss()
+
         # pantalla de acceso: escribir la contraseña (con puntos), mostrarla y elegir marca
         f = root.ids.admin
         f.focus = True

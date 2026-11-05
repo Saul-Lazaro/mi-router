@@ -227,10 +227,9 @@ KV = """
 
     # ---------- pestañas (solo tras conectar) ----------
     BoxLayout:
+        id: tabs_bar
         size_hint_y: None
-        height: dp(62) if root.connected else 0
-        opacity: 1 if root.connected else 0
-        disabled: not root.connected
+        height: dp(62)
         padding: dp(14), dp(10), dp(14), dp(4)
         spacing: dp(8)
         TabButton:
@@ -251,6 +250,7 @@ KV = """
     ScrollView:
         do_scroll_x: False
         BoxLayout:
+            id: content
             orientation: "vertical"
             padding: max(dp(16), (self.width - dp(430)) / 2), (dp(12) if root.connected else dp(40)), max(dp(16), (self.width - dp(430)) / 2), dp(20)
             spacing: dp(12)
@@ -260,9 +260,6 @@ KV = """
             # ---------- inicio de sesión ----------
             Card:
                 id: login
-                height: self.minimum_height if not root.connected else 0
-                opacity: 0 if root.connected else 1
-                disabled: root.connected
                 spacing: dp(8)
                 Label:
                     text: "Acceder al router"
@@ -327,6 +324,7 @@ KV = """
                 FieldLabel:
                     text: "Marca del router"
                 Button:
+                    id: brand_btn
                     text: root.brand_choice + "   \u25BE"
                     size_hint_y: None
                     height: dp(44)
@@ -362,9 +360,8 @@ KV = """
                 orientation: "vertical"
                 spacing: dp(14)
                 size_hint_y: None
-                height: self.minimum_height if root.connected and root.tab == "wifi" else 0
-                opacity: 1 if root.connected and root.tab == "wifi" else 0
-                disabled: not (root.connected and root.tab == "wifi")
+                id: wifi_tab
+                height: self.minimum_height
                 Card:
                     Section:
                         text: "Mis redes Wi‑Fi"
@@ -410,9 +407,8 @@ KV = """
                 orientation: "vertical"
                 spacing: dp(10)
                 size_hint_y: None
-                height: self.minimum_height if root.connected and root.tab == "devices" else 0
-                opacity: 1 if root.connected and root.tab == "devices" else 0
-                disabled: not (root.connected and root.tab == "devices")
+                id: dev_tab
+                height: self.minimum_height
                 BoxLayout:
                     size_hint_y: None
                     height: dp(46)
@@ -566,6 +562,26 @@ class Root(BoxLayout):
         self.conn = None
         self.checks = []  # (CheckBox, WifiNetwork)
         self.ids.host.text = suggest_host()
+        # Las secciones que no se ven se QUITAN de la pantalla (no solo se ocultan):
+        # ocultas pero presentes, se quedaban con los toques de la pantalla de acceso.
+        self._sections = {k: self.ids[k].__self__ for k in ("login", "wifi_tab", "dev_tab", "tabs_bar")}
+        self.bind(connected=self._layout, tab=self._layout)
+        self._layout()
+
+    def _layout(self, *_):
+        content = self.ids.content
+        login, wifi, dev, tabs = (self._sections[k] for k in ("login", "wifi_tab", "dev_tab", "tabs_bar"))
+        wanted = ([wifi] if self.tab == "wifi" else [dev]) if self.connected else [login]
+        for w in (login, wifi, dev):
+            if w.parent is not None and w not in wanted:
+                w.parent.remove_widget(w)
+        for w in wanted:
+            if w.parent is None:
+                content.add_widget(w, index=len(content.children))  # arriba del todo
+        if self.connected and tabs.parent is None:
+            self.add_widget(tabs, index=1)        # entre la cabecera y el contenido
+        elif not self.connected and tabs.parent is not None:
+            tabs.parent.remove_widget(tabs)
 
     # --- utilidades --------------------------------------------------------
     def _run(self, work, on_ok, working="Trabajando…"):
