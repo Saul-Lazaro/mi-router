@@ -84,7 +84,9 @@ def _poke(dt):
         uf.focus = True
         for ch in "mala1234":
             uf.insert_text(ch)
-        assert uf.secret == "mala1234", f"no se escribió en el campo de desbloqueo ({uf.secret!r})"
+        assert uf.secret == "mala1234", (f"no se escribió en el campo de desbloqueo (secret={uf.secret!r} "
+                                         f"text={uf.text!r} disabled={uf.disabled} readonly={uf.readonly} "
+                                         f"type={type(uf).__name__} parent={type(uf.parent).__name__} masked={uf.masked})")
         root._unlock_ok.dispatch("on_release")
         assert not root.unlocked, "una contraseña incorrecta no debe desbloquear"
         uf.focus = True
