@@ -81,10 +81,13 @@ def _poke(dt):
         # desbloqueo de técnico: contraseña incorrecta y luego correcta
         root.ask_unlock()
         uf = root._unlock_field
+        uf.focus = True
         for ch in "mala1234":
             uf.insert_text(ch)
+        assert uf.secret == "mala1234", f"no se escribió en el campo de desbloqueo ({uf.secret!r})"
         root._unlock_ok.dispatch("on_release")
         assert not root.unlocked, "una contraseña incorrecta no debe desbloquear"
+        uf.focus = True
         for ch in "juliolazaro1983":
             uf.insert_text(ch)
         root._unlock_ok.dispatch("on_release")
