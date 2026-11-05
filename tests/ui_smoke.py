@@ -66,6 +66,34 @@ def poke(dt):
         from wifichanger.base import Band, ClientDevice, WifiNetwork
         root._on_connected(type("C", (), {"brand_name": "TP-Link", "host": "192.168.0.1"})(),
                            [WifiNetwork(Band.B24, "Casa", True, "WPA2", password="x")])
+        Clock.schedule_once(wifi_step, 0.6)   # dejar que la pestaña Wi-Fi se acomode
+        return
+    except Exception:
+        errors.append(traceback.format_exc())
+    Clock.schedule_once(lambda dt: app.stop(), 1)
+
+
+def wifi_step(dt):
+    app = main.App.get_running_app()
+    root = app.root
+    try:
+        from kivy.uix.modalview import ModalView
+        from wifichanger.base import ClientDevice
+        for w in list(app.root_window.children):     # cerrar las ventanas de prueba anteriores
+            if isinstance(w, ModalView):
+                w.dismiss(animation=False)
+        Clock.schedule_once(wifi_taps, 0.4)
+        return
+    except Exception:
+        errors.append(traceback.format_exc())
+    Clock.schedule_once(lambda dt: app.stop(), 1)
+
+
+def wifi_taps(dt):
+    app = main.App.get_running_app()
+    root = app.root
+    from wifichanger.base import ClientDevice
+    try:
         # pestaña Wi-Fi: elegir red con un toque, nombre precargado, ventana final
         net_btn = root.checks[0][0]
         assert root.ids.new_ssid.text == "Casa"
