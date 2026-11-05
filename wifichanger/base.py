@@ -20,6 +20,7 @@ class WifiNetwork:
     security: str = ""
     guest: bool = False
     password: str | None = None   # clave actual, si el router la entrega
+    ref: object = None            # identificador interno del driver (p. ej. SSID concreto del EAP)
 
 
 def normalize_mac(mac: str) -> str:
@@ -38,6 +39,7 @@ class ClientDevice:
     connection: str = ""      # "Cable", "2.4GHz", "5GHz", "Invitados"...
     blocked: bool = False
     is_self: bool = False     # el dispositivo desde el que se usa la app
+    extra: dict | None = None  # datos que el driver necesita para bloquear/desbloquear
 
     def __post_init__(self):
         self.mac = normalize_mac(self.mac)
@@ -105,6 +107,15 @@ class RouterDriver(ABC):
 
     @abstractmethod
     def set_wifi_password(self, band: Band, new_password: str, guest: bool = False) -> None: ...
+
+    def apply_to_networks(self, networks: list[WifiNetwork], ssid: str | None = None,
+                          password: str | None = None) -> None:
+        """Aplica nombre/clave a redes concretas. Por defecto agrupa por banda; los equipos con
+        varias redes por banda (EAP Omada) lo sobrescriben usando `WifiNetwork.ref`."""
+        for guest in (False, True):
+            bands = [n.band for n in networks if n.guest == guest]
+            if bands:
+                self.apply_wifi_settings(bands, ssid=ssid, password=password, guest=guest)
 
     def apply_wifi_settings(self, bands: list[Band], ssid: str | None = None,
                             password: str | None = None, guest: bool = False) -> None:

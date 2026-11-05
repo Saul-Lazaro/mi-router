@@ -80,10 +80,7 @@ def change_wifi(conn: Connection, networks: list[WifiNetwork], new_ssid: str,
     driver = _driver(conn)
     try:
         driver.login()
-        for guest in (False, True):
-            bands = [n.band for n in networks if n.guest == guest]
-            if bands:
-                driver.apply_wifi_settings(bands, ssid=ssid, password=password, guest=guest)
+        driver.apply_to_networks(networks, ssid=ssid, password=password)
     except (requests.ConnectionError, requests.Timeout):
         # El router suele aplicar el cambio y cortar el Wi‑Fi antes de responder.
         result["message"] = (f"El router aplicó el cambio de {what} y cortó la conexión "
