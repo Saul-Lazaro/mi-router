@@ -80,6 +80,17 @@ def _poke(dt):
         f.focus = False
         # desbloqueo de técnico: contraseña incorrecta y luego correcta
         root.ask_unlock()
+        Clock.schedule_once(unlock_step, 0.6)   # dejar que la ventana de desbloqueo se prepare
+        return
+    except Exception:
+        errors.append(traceback.format_exc())
+    Clock.schedule_once(lambda dt: app.stop(), 1)
+
+
+def unlock_step(dt):
+    app = main.App.get_running_app()
+    root = app.root
+    try:
         uf = root._unlock_field
         uf.focus = True
         for ch in "mala1234":
@@ -95,6 +106,7 @@ def _poke(dt):
         root._unlock_ok.dispatch("on_release")
         assert root.unlocked, f"la contraseña correcta debe desbloquear (secret={uf.secret!r} text={uf.text!r})"
         assert root.ids.unlock_btn.text == "Modo técnico activo"
+        root._unlock_popup.dismiss(animation=False) if root._unlock_popup.parent else None
         root.choose_brand()
         root.brand_choice = "TP-Link"
         root._show_wait("Accediendo al equipo…")
