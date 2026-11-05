@@ -14,6 +14,6 @@ jobs:
         with:
           python-version: "3.12"
       - run: sudo apt-get update && sudo apt-get install -y xvfb libgl1 libegl1 libmtdev1 xclip
-      - run: pip install "kivy[base]==2.3.1" requests
+      - run: pip install "kivy[base]==2.3.1" requests pytest
       - name: Arrancar la app en pantalla virtual
         run: xvfb-run -a -s "-screen 0 1080x1920x24" python tests/ui_smoke.py
