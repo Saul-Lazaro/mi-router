@@ -12,7 +12,7 @@ from kivy.config import Config  # noqa: E402
 
 # Ventana con proporción de celular (alto > ancho), como en el teléfono
 Config.set("graphics", "width", "540")
-Config.set("graphics", "height", "1100")
+Config.set("graphics", "height", "1400")
 
 from kivy.clock import Clock  # noqa: E402
 
@@ -65,7 +65,7 @@ def poke(dt):
         assert f.secret == "clave123", f.secret
         f.focus = False
         # desbloqueo de técnico: contraseña incorrecta y luego correcta
-        tap(root.ids.unlock_btn)
+        root.ask_unlock()
         uf = root._unlock_field
         for ch in "mala1234":
             uf.insert_text(ch)
