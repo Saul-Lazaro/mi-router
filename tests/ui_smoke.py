@@ -8,6 +8,12 @@ os.environ.setdefault("KIVY_NO_ARGS", "1")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from kivy.config import Config  # noqa: E402
+
+# Ventana con proporción de celular (alto > ancho), como en el teléfono
+Config.set("graphics", "width", "540")
+Config.set("graphics", "height", "1100")
+
 from kivy.clock import Clock  # noqa: E402
 
 import main  # noqa: E402
