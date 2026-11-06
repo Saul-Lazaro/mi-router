@@ -122,6 +122,9 @@ def unlock_step(dt):
         root.ids.admin.clear()
         root.ids.host.text = "10.0.0.9"
         assert root.ids.admin.secret == "clave77", "la clave recordada debe rellenarse sola"
+        root.connected = True
+        root.disconnect()                           # Salir: la clave recordada vuelve sola
+        assert root.ids.admin.secret == "clave77", "tras Salir la clave recordada debe volver"
         root.choose_brand()
         root.brand_choice = "TP-Link"
         root._show_wait("Accediendo al equipo…")

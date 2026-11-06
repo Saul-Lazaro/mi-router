@@ -921,6 +921,7 @@ class Root(BoxLayout):
         self.connected = False
         self.conn = None
         self.ids.admin.clear()
+        self._autofill_password()               # vuelve a poner la clave recordada de esta IP
         self.ids.nets.clear_widgets()
         self.ids.devices.clear_widgets()
         self.checks = []
