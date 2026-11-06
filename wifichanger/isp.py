@@ -12,7 +12,7 @@ ISP_PHONES = ("996770477", "982877033")
 ISP_MESSAGE = ("Comuníquese con su Proveedor de Internet:\n"
                "996 770 477  ·  982 877 033\n\n"
                "Si no eres cliente de la Red MaxSolution no podrás usar esta aplicación.")
-WHATSAPP_TEXT = "Hola, necesito ayuda con mi conexión a la Red MaxSolution."
+WHATSAPP_TEXT = "Hola, necesito ayuda con mi conexión a la Red MaxSolution, no soy cliente."
 
 # Solo se guarda el hash de la contraseña de desbloqueo (no el texto). Ojo: dentro de un APK
 # esto evita leerla a simple vista, pero no es una protección fuerte.
