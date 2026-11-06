@@ -292,6 +292,7 @@ KV = """
                     id: user
                     halign: "center"
                     text: "admin"
+                    disabled: root.brand_choice == "Tenda"
                     hint_text: "normalmente admin"
                     text_validate_unfocus: False
                     on_text_validate: admin.focus = True
@@ -591,6 +592,37 @@ def _save_unlock() -> None:
         pass
 
 
+def _passwords_file():
+    """Claves de administrador recordadas por IP, en el almacenamiento privado de la app
+    (se borra al desinstalarla)."""
+    import os
+    app = App.get_running_app()
+    return os.path.join(app.user_data_dir if app else ".", "claves_routers.json")
+
+
+def _load_passwords() -> dict:
+    import json
+    try:
+        with open(_passwords_file()) as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_password(host: str, password: str) -> None:
+    import json
+    if not host:
+        return
+    data = _load_passwords()
+    data[host] = password
+    try:
+        with open(_passwords_file(), "w") as fh:
+            json.dump(data, fh)
+    except OSError:
+        pass
+
+
 def _wrap_label(text, color=TEXT, font_size="15sp", bold=False, markup=False):
     lbl = Label(text=text, color=color, font_size=font_size, bold=bold, markup=markup,
                 halign="left", valign="middle", size_hint_y=None)
@@ -652,6 +684,9 @@ class Root(BoxLayout):
         self.checks = []  # (CheckBox, WifiNetwork)
         self.ids.host.text = suggest_host()
         self.unlocked = _load_unlock()
+        # Clave de administrador recordada por router (IP): se rellena sola
+        self.ids.host.bind(text=lambda *_: self._autofill_password())
+        self._autofill_password()
         # Las secciones que no se ven se QUITAN de la pantalla (no solo se ocultan):
         # ocultas pero presentes, se quedaban con los toques de la pantalla de acceso.
         self._sections = {k: self.ids[k].__self__ for k in ("login", "wifi_tab", "dev_tab", "tabs_bar")}
@@ -810,8 +845,8 @@ class Root(BoxLayout):
         popup.open()
 
     def do_connect(self):
-        conn = Connection(self.ids.host.text, BRAND_KEYS[self.brand_choice],
-                          self.ids.user.text, self.ids.admin.secret)
+        user = "admin" if self.brand_choice == "Tenda" else self.ids.user.text
+        conn = Connection(self.ids.host.text, BRAND_KEYS[self.brand_choice], user, self.ids.admin.secret)
         skip_isp = self.unlocked
 
         def work():
@@ -862,7 +897,15 @@ class Root(BoxLayout):
         self._unlock_ok = ok
         popup.open()
 
+    def _autofill_password(self):
+        saved = _load_passwords().get(self.ids.host.text.strip())
+        field = self.ids.admin
+        if saved is not None and not field.secret:
+            field.secret = saved
+            field._refresh()
+
     def _on_connected(self, conn, nets):
+        _save_password(conn.host.strip(), conn.admin_password)
         self.conn = conn
         self.brand_name = conn.brand_name
         self.host_shown = conn.host.strip()

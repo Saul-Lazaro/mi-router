@@ -112,6 +112,16 @@ def unlock_step(dt):
         assert root.ids.unlock_btn.text == "Modo técnico activo"
         assert main._load_unlock(), "el desbloqueo debe quedar guardado en el celular"
         root._unlock_popup.dismiss(animation=False) if root._unlock_popup.parent else None
+        # Tenda: el usuario queda bloqueado
+        root.brand_choice = "Tenda"
+        assert root.ids.user.disabled, "con Tenda el usuario debe estar bloqueado"
+        root.brand_choice = "Detectar marca"
+        assert not root.ids.user.disabled
+        # clave de administrador recordada por IP
+        main._save_password("10.0.0.9", "clave77")
+        root.ids.admin.clear()
+        root.ids.host.text = "10.0.0.9"
+        assert root.ids.admin.secret == "clave77", "la clave recordada debe rellenarse sola"
         root.choose_brand()
         root.brand_choice = "TP-Link"
         root._show_wait("Accediendo al equipo…")
