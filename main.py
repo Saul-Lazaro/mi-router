@@ -1,6 +1,7 @@
 """Maxs Wifi — app Android (Kivy) para routers TP-Link y Tenda:
 cambiar la clave Wi‑Fi, ver quién está conectado y bloquear o desbloquear equipos."""
 import threading
+from urllib.parse import quote
 
 from kivy.app import App
 from kivy.clock import Clock, mainthread
@@ -20,7 +21,7 @@ from kivy.utils import escape_markup
 
 from wifichanger.base import RouterError
 from wifichanger.android_wifi import connect_to_wifi
-from wifichanger.isp import ISP_MESSAGE, ISP_PHONES, check_unlock_password, isp_reachable
+from wifichanger.isp import ISP_MESSAGE, ISP_PHONES, WHATSAPP_TEXT, check_unlock_password, isp_reachable
 from wifichanger.service import (BRAND_KEYS, Connection, change_wifi, connect, current_passwords,
                                  list_clients, set_blocked, suggest_host)
 
@@ -649,9 +650,9 @@ def open_in_browser(url: str) -> None:
         webbrowser.open(url)
 
 
-def _wrap_label(text, color=TEXT, font_size="15sp", bold=False, markup=False):
+def _wrap_label(text, color=TEXT, font_size="15sp", bold=False, markup=False, halign="left"):
     lbl = Label(text=text, color=color, font_size=font_size, bold=bold, markup=markup,
-                halign="left", valign="middle", size_hint_y=None)
+                halign=halign, valign="middle", size_hint_y=None)
     lbl.bind(width=lambda w, v: setattr(w, "text_size", (v, None)),
              texture_size=lambda w, v: setattr(w, "height", v[1] + dp(2)))
     return lbl
@@ -794,24 +795,25 @@ class Root(BoxLayout):
         if error:
             self._msg(error, ok=False)
             if error == ISP_MESSAGE:
-                self._alert("Sin conexión con el proveedor", error, phones=ISP_PHONES)
+                self._alert("Sin conexión con el proveedor", error, phones=ISP_PHONES, center=True)
             else:
                 self._alert("No se pudo completar", error, panel=not self.connected)
         else:
             callback()
 
-    def _alert(self, title, text, panel=False, phones=()):
+    def _alert(self, title, text, panel=False, phones=(), center=False):
         """Ventana de mensaje; su alto se ajusta al texto. Con `panel`, ofrece abrir el panel web."""
         box = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(12), size_hint_y=None)
         box.bind(minimum_height=box.setter("height"))
-        box.add_widget(_wrap_label(text))
+        box.add_widget(_wrap_label(text, halign="center" if center else "left"))
         popup = Popup(title=title, content=box, size_hint=(0.9, None))
-        for number in phones:                     # botón para llamar a cada número
+        for number in phones:                     # WhatsApp a cada número (Perú: +51)
             pretty = f"{number[:3]} {number[3:6]} {number[6:]}"
-            call = RoundButton(text=f"Llamar {pretty}", size_hint_y=None, height=dp(48),
-                               bg=[0.86, 0.93, 0.83, 1], color=DARK)
-            call.bind(on_release=lambda *_, n=number: open_in_browser(f"tel:{n}"))
-            box.add_widget(call)
+            chat = RoundButton(text=f"WhatsApp {pretty}", size_hint_y=None, height=dp(48),
+                               bg=[0.145, 0.827, 0.400, 1])
+            url = f"https://wa.me/51{number}?text={quote(WHATSAPP_TEXT)}"
+            chat.bind(on_release=lambda *_, u=url: open_in_browser(u))
+            box.add_widget(chat)
         if panel:
             web = RoundButton(text="Abrir panel del router", size_hint_y=None, height=dp(48),
                               bg=[0.86, 0.93, 0.83, 1], color=DARK)

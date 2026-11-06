@@ -141,14 +141,15 @@ def unlock_step(dt):
         root.open_panel()
         assert opened == ["http://192.168.0.1"], opened
         # mensaje del proveedor: números con botón Llamar y SIN "Abrir panel del router"
-        root._alert("Sin conexión con el proveedor", main.ISP_MESSAGE, phones=main.ISP_PHONES)
+        root._alert("Sin conexión con el proveedor", main.ISP_MESSAGE, phones=main.ISP_PHONES, center=True)
         texts = [w.text for w in root._last_alert.content.children if hasattr(w, "text")]
         assert "996 770 477" in main.ISP_MESSAGE and "982 877 033" in main.ISP_MESSAGE
-        assert "Llamar 996 770 477" in texts and "Llamar 982 877 033" in texts, texts
+        assert "WhatsApp 996 770 477" in texts and "WhatsApp 982 877 033" in texts, texts
+        assert "MaxSolution" in main.ISP_MESSAGE
         assert "Abrir panel del router" not in texts, texts
         opened.clear()
-        next(w for w in root._last_alert.content.children if getattr(w, "text", "") == "Llamar 996 770 477").dispatch("on_release")
-        assert opened == ["tel:996770477"], opened
+        next(w for w in root._last_alert.content.children if getattr(w, "text", "") == "WhatsApp 996 770 477").dispatch("on_release")
+        assert opened and opened[0].startswith("https://wa.me/51996770477?text="), opened
         root._password_popup("Clave cambiada", "Prueba", [("Red · 2.4GHz", "Clave1234")])
         root._confirm("Bloquear", "¿Seguro?", "Bloquear", main.RED, lambda: None)
         from wifichanger.base import Band, ClientDevice, WifiNetwork
