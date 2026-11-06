@@ -131,7 +131,7 @@ def unlock_step(dt):
         root._password_popup("Clave cambiada", "Prueba", [("Red · 2.4GHz", "Clave1234")])
         root._confirm("Bloquear", "¿Seguro?", "Bloquear", main.RED, lambda: None)
         from wifichanger.base import Band, ClientDevice, WifiNetwork
-        root._on_connected(type("C", (), {"brand_name": "TP-Link", "host": "192.168.0.1"})(),
+        root._on_connected(type("C", (), {"brand_name": "TP-Link", "host": "192.168.0.1", "admin_password": "x"})(),
                            [WifiNetwork(Band.B24, "Casa", True, "WPA2", password="x")])
         Clock.schedule_once(wifi_step, 0.6)   # dejar que la pestaña Wi-Fi se acomode
         return
