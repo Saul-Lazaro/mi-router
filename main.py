@@ -20,7 +20,7 @@ from kivy.utils import escape_markup
 
 from wifichanger.base import RouterError
 from wifichanger.android_wifi import connect_to_wifi
-from wifichanger.isp import ISP_MESSAGE, check_unlock_password, isp_reachable
+from wifichanger.isp import ISP_MESSAGE, ISP_PHONES, check_unlock_password, isp_reachable
 from wifichanger.service import (BRAND_KEYS, Connection, change_wifi, connect, current_passwords,
                                  list_clients, set_blocked, suggest_host)
 
@@ -793,16 +793,25 @@ class Root(BoxLayout):
             self._wait = None
         if error:
             self._msg(error, ok=False)
-            self._alert("No se pudo completar", error, panel=not self.connected)
+            if error == ISP_MESSAGE:
+                self._alert("Sin conexión con el proveedor", error, phones=ISP_PHONES)
+            else:
+                self._alert("No se pudo completar", error, panel=not self.connected)
         else:
             callback()
 
-    def _alert(self, title, text, panel=False):
+    def _alert(self, title, text, panel=False, phones=()):
         """Ventana de mensaje; su alto se ajusta al texto. Con `panel`, ofrece abrir el panel web."""
         box = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(12), size_hint_y=None)
         box.bind(minimum_height=box.setter("height"))
         box.add_widget(_wrap_label(text))
         popup = Popup(title=title, content=box, size_hint=(0.9, None))
+        for number in phones:                     # botón para llamar a cada número
+            pretty = f"{number[:3]} {number[3:6]} {number[6:]}"
+            call = RoundButton(text=f"Llamar {pretty}", size_hint_y=None, height=dp(48),
+                               bg=[0.86, 0.93, 0.83, 1], color=DARK)
+            call.bind(on_release=lambda *_, n=number: open_in_browser(f"tel:{n}"))
+            box.add_widget(call)
         if panel:
             web = RoundButton(text="Abrir panel del router", size_hint_y=None, height=dp(48),
                               bg=[0.86, 0.93, 0.83, 1], color=DARK)
