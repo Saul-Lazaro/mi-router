@@ -79,6 +79,10 @@ def _poke(dt):
         assert f.secret == "clave123", f.secret
         f.focus = False
         # desbloqueo de técnico: contraseña incorrecta y luego correcta
+        import os
+        if os.path.exists(main._unlock_file()):        # empezar bloqueado
+            os.remove(main._unlock_file())
+        root.unlocked = False
         root.ask_unlock()
         Clock.schedule_once(unlock_step, 0.6)   # dejar que la ventana de desbloqueo se prepare
         return
@@ -106,6 +110,7 @@ def unlock_step(dt):
         root._unlock_ok.dispatch("on_release")
         assert root.unlocked, f"la contraseña correcta debe desbloquear (secret={uf.secret!r} text={uf.text!r})"
         assert root.ids.unlock_btn.text == "Modo técnico activo"
+        assert main._load_unlock(), "el desbloqueo debe quedar guardado en el celular"
         root._unlock_popup.dismiss(animation=False) if root._unlock_popup.parent else None
         root.choose_brand()
         root.brand_choice = "TP-Link"

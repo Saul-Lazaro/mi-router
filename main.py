@@ -566,6 +566,31 @@ class RoundButton(Button):
     radius = NumericProperty(dp(14))
 
 
+def _unlock_file():
+    """Archivo en el almacenamiento privado de la app: Android lo borra al desinstalarla
+    (y la copia de seguridad está desactivada, así que no vuelve al reinstalar)."""
+    import os
+    app = App.get_running_app()
+    folder = app.user_data_dir if app else "."
+    return os.path.join(folder, "desbloqueo_tecnico")
+
+
+def _load_unlock() -> bool:
+    try:
+        with open(_unlock_file()) as fh:
+            return fh.read().strip() == "1"
+    except OSError:
+        return False
+
+
+def _save_unlock() -> None:
+    try:
+        with open(_unlock_file(), "w") as fh:
+            fh.write("1")
+    except OSError:
+        pass
+
+
 def _wrap_label(text, color=TEXT, font_size="15sp", bold=False, markup=False):
     lbl = Label(text=text, color=color, font_size=font_size, bold=bold, markup=markup,
                 halign="left", valign="middle", size_hint_y=None)
@@ -618,7 +643,7 @@ class Root(BoxLayout):
     brand_choice = StringProperty("Detectar marca")
     top_pad = NumericProperty(dp(28))
     ssid_edit = BooleanProperty(False)
-    unlocked = BooleanProperty(False)    # desbloqueo de técnico: no verifica el proveedor (hasta cerrar la app)   # el nombre de la red solo se edita tras tocar "Cambiar"
+    unlocked = BooleanProperty(False)    # desbloqueo de técnico: no verifica el proveedor (queda guardado hasta desinstalar)   # el nombre de la red solo se edita tras tocar "Cambiar"
     status_color = ListProperty(list(MUTED))
 
     def __init__(self, **kw):
@@ -626,6 +651,7 @@ class Root(BoxLayout):
         self.conn = None
         self.checks = []  # (CheckBox, WifiNetwork)
         self.ids.host.text = suggest_host()
+        self.unlocked = _load_unlock()
         # Las secciones que no se ven se QUITAN de la pantalla (no solo se ocultan):
         # ocultas pero presentes, se quedaban con los toques de la pantalla de acceso.
         self._sections = {k: self.ids[k].__self__ for k in ("login", "wifi_tab", "dev_tab", "tabs_bar")}
@@ -800,8 +826,8 @@ class Root(BoxLayout):
     def ask_unlock(self):
         """Contraseña de técnico: permite usar la app sin verificar el proveedor."""
         if self.unlocked:
-            self._alert("Modo técnico", "La app ya está desbloqueada: no verifica el proveedor "
-                        "hasta que la cierres.")
+            self._alert("Modo técnico", "La app ya está desbloqueada en este celular: no verifica el "
+                        "proveedor hasta que se desinstale.")
             return
         box = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(10))
         box.add_widget(_wrap_label("Escribe la contraseña de desbloqueo.", color=MUTED, font_size="14sp"))
@@ -818,6 +844,7 @@ class Root(BoxLayout):
         def try_unlock(*_):
             if check_unlock_password(field.secret):
                 self.unlocked = True
+                _save_unlock()
                 popup.dismiss()
                 self._msg("Modo técnico activo: la app no verificará el proveedor.", ok=True)
             else:
