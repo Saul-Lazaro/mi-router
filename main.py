@@ -360,6 +360,17 @@ KV = """
                     disabled: root.busy
                     on_release: root.do_connect()
                 Button:
+                    id: panel_btn
+                    text: "Abrir panel del router"
+                    size_hint_y: None
+                    height: dp(30)
+                    font_size: "14sp"
+                    color: DARK
+                    background_normal: ""
+                    background_down: ""
+                    background_color: 0, 0, 0, 0
+                    on_release: root.open_panel()
+                Button:
                     id: unlock_btn
                     text: "Modo técnico activo" if root.unlocked else "Desbloquear"
                     size_hint_y: None
@@ -623,6 +634,21 @@ def _save_password(host: str, password: str) -> None:
         pass
 
 
+def open_in_browser(url: str) -> None:
+    """Navegador del sistema (Android: Intent ACTION_VIEW; escritorio: webbrowser)."""
+    from wifichanger.android_wifi import on_android
+    if on_android():
+        from jnius import autoclass
+        Intent = autoclass("android.content.Intent")
+        Uri = autoclass("android.net.Uri")
+        activity = autoclass("org.kivy.android.PythonActivity").mActivity
+        intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        activity.startActivity(intent)
+    else:
+        import webbrowser
+        webbrowser.open(url)
+
+
 def _wrap_label(text, color=TEXT, font_size="15sp", bold=False, markup=False):
     lbl = Label(text=text, color=color, font_size=font_size, bold=bold, markup=markup,
                 halign="left", valign="middle", size_hint_y=None)
@@ -767,19 +793,41 @@ class Root(BoxLayout):
             self._wait = None
         if error:
             self._msg(error, ok=False)
-            self._alert("No se pudo completar", error)
+            self._alert("No se pudo completar", error, panel=not self.connected)
         else:
             callback()
 
-    def _alert(self, title, text):
-        box = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(12))
+    def _alert(self, title, text, panel=False):
+        """Ventana de mensaje; su alto se ajusta al texto. Con `panel`, ofrece abrir el panel web."""
+        box = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(12), size_hint_y=None)
+        box.bind(minimum_height=box.setter("height"))
         box.add_widget(_wrap_label(text))
-        ok = Button(text="Entendido", size_hint_y=None, height=dp(48),
-                    background_normal="", background_color=BLUE)
-        box.add_widget(ok)
-        popup = Popup(title=title, content=box, size_hint=(0.9, None), height=dp(320))
+        popup = Popup(title=title, content=box, size_hint=(0.9, None))
+        if panel:
+            web = RoundButton(text="Abrir panel del router", size_hint_y=None, height=dp(48),
+                              bg=[0.86, 0.93, 0.83, 1], color=DARK)
+            web.bind(on_release=lambda *_: (popup.dismiss(), self.open_panel()))
+            box.add_widget(web)
+        ok = RoundButton(text="Entendido", size_hint_y=None, height=dp(48))
         ok.bind(on_release=lambda *_: popup.dismiss())
+        box.add_widget(ok)
+        box.bind(height=lambda *_: setattr(popup, "height", box.height + dp(92)))
+        popup.height = box.height + dp(92)
+        self._last_alert = popup
         popup.open()
+
+    def open_panel(self):
+        """Abre el panel web del router (la IP escrita) en el navegador del celular."""
+        host = (self.conn.host if self.connected and self.conn else self.ids.host.text).strip()
+        if not host:
+            self._alert("Abrir panel", "Escribe primero la IP del router.")
+            return
+        url = host if host.startswith("http") else f"http://{host}"
+        try:
+            open_in_browser(url)
+            self._msg(f"Abriendo {url} en el navegador…", ok=None)
+        except Exception as e:
+            self._alert("Abrir panel", f"No se pudo abrir el navegador: {e}")
 
     def _password_popup(self, title, intro, rows):
         """rows: [(nombre_red, clave)]. Muestra cada clave con su botón Copiar."""

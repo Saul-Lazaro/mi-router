@@ -17,6 +17,7 @@ Config.set("graphics", "height", "1400")
 from kivy.clock import Clock  # noqa: E402
 
 import main  # noqa: E402
+from kivy.metrics import dp as dp_  # noqa: E402
 
 errors = []
 
@@ -131,6 +132,14 @@ def unlock_step(dt):
         root._progress("Buscando el router…")
         root._wait.dismiss()
         root._alert("Prueba", "Mensaje de prueba")
+        # ventana de error compacta + botón para abrir el panel web
+        opened = []
+        main.open_in_browser = lambda url: opened.append(url)
+        root.ids.host.text = "192.168.0.1"
+        root._alert("No se pudo completar", "El Tenda no aceptó el acceso.", panel=True)
+        assert root._last_alert.height < dp_(320), f"ventana de error demasiado alta: {root._last_alert.height}"
+        root.open_panel()
+        assert opened == ["http://192.168.0.1"], opened
         root._password_popup("Clave cambiada", "Prueba", [("Red · 2.4GHz", "Clave1234")])
         root._confirm("Bloquear", "¿Seguro?", "Bloquear", main.RED, lambda: None)
         from wifichanger.base import Band, ClientDevice, WifiNetwork

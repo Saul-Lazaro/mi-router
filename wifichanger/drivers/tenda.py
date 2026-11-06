@@ -63,7 +63,8 @@ class TendaDriver(RouterDriver):
             wrong = r.text.strip() == "1"  # algunos firmwares responden "1" si la clave es mala
             if r.status_code in (200, 302) and self.session.cookies and "login" not in location and not wrong:
                 return
-        raise AuthError("Tenda rechazó la contraseña de administrador.")
+        raise AuthError("El Tenda no aceptó el acceso. Si la contraseña es correcta, este modelo "
+                        "puede no ser compatible con la app: usa «Abrir panel del router».")
 
     def logout(self) -> None:
         try:
