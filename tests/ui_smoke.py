@@ -190,7 +190,9 @@ def unlock_step(dt):
         root._confirm("Bloquear", "¿Seguro?", "Bloquear", main.RED, lambda: None)
         from wifichanger.base import Band, ClientDevice, WifiNetwork
         root._on_connected(type("C", (), {"brand_name": "TP-Link", "host": "192.168.0.1", "admin_password": "x"})(),
-                           [WifiNetwork(Band.B24, "Casa", True, "WPA2", password="x")])
+                           [WifiNetwork(Band.B24, "Casa", True, "WPA2", password="x"),
+                            WifiNetwork(Band.B5, "Casa_5G", True, "WPA2", password="x"),
+                            WifiNetwork(Band.B5, "Apagada", False, "WPA2", password="x")])
         Clock.schedule_once(wifi_step, 0.6)   # dejar que la pestaña Wi-Fi se acomode
         return
     except Exception:
@@ -219,27 +221,38 @@ def wifi_taps(dt):
     root = app.root
     from wifichanger.base import ClientDevice
     try:
-        # pestaña Wi-Fi: elegir red con un toque, nombre precargado, ventana final
-        net_btn = root.checks[0][0]
-        assert root.ids.new_ssid.text == "Casa"
-        tap(net_btn)
-        assert net_btn.state == "normal"
-        tap(net_btn)
-        assert net_btn.state == "down" and root.ids.new_ssid.text == "Casa"
+        # solo las redes encendidas, cada una con su tarjeta
+        cards = root.cards
+        assert [c.net.ssid for c in cards] == ["Casa", "Casa_5G"], [c.net.ssid for c in cards]
+        card = cards[0]
+        assert card.ids.ssid.text == "Casa"
         # el nombre de la red está bloqueado hasta tocar "Cambiar"
-        tap(root.ids.new_ssid)
-        assert not root.ids.new_ssid.focus and root.ids.new_ssid.disabled, "el nombre debería estar bloqueado"
-        tap(root.ids.ssid_btn)
-        assert root.ssid_edit and not root.ids.new_ssid.disabled, "Cambiar no habilitó el nombre"
-        assert root.ids.ssid_btn.text == "Cancelar"
-        tap(root.ids.new_ssid)
-        assert root.ids.new_ssid.focus, "el toque no llegó al campo del nombre de red"
-        root.ids.new_ssid.focus = False
-        root.ids.new_ssid.text = "Otro nombre"
-        tap(root.ids.ssid_btn)                       # Cancelar: vuelve al nombre actual y bloquea
-        assert not root.ssid_edit and root.ids.new_ssid.text == "Casa"
+        tap(card.ids.ssid)
+        assert not card.ids.ssid.focus and card.ids.ssid.disabled, "el nombre debería estar bloqueado"
+        tap(card.ids.ssid_btn)
+        assert card.ssid_edit and not card.ids.ssid.disabled, "Cambiar no habilitó el nombre"
+        assert card.ids.ssid_btn.text == "Cancelar"
+        assert not cards[1].ssid_edit, "la otra red no debe cambiar"
+        tap(card.ids.ssid)
+        assert card.ids.ssid.focus, "el toque no llegó al campo del nombre de red"
+        card.ids.ssid.focus = False
+        card.ids.ssid.text = "Otro nombre"
+        tap(card.ids.ssid_btn)                       # Cancelar: vuelve al nombre actual y bloquea
+        assert not card.ssid_edit and card.ids.ssid.text == "Casa"
+        # pestañas: tocar "Conectados" y volver a "Clave Wi‑Fi"
+        root.load_devices = lambda *a: None          # sin router real en la prueba
+        assert root.ids.tab_devices.text == "Conectados"
+        tap(root.ids.tab_devices)
+        assert root.tab == "devices" and root.ids.dev_tab.parent is not None, "no abrió Conectados"
+        tap(root.ids.tab_wifi)
+        assert root.tab == "wifi" and root.ids.wifi_tab.parent is not None, "no volvió a Clave Wi-Fi"
+        assert root.ids.dev_tab.parent is None and root.ids.tab_wifi.state == "down"
+        tap(root.ids.tab_wifi)                       # tocarla otra vez no la apaga
+        assert root.tab == "wifi" and root.ids.tab_wifi.state == "down"
+        card.reset("Casa 2")
+        assert card.current_ssid == "Casa 2" and card.ids.ssid.text == "Casa 2"
         root._changed({"message": "Se cambió nombre y clave de Casa (2.4GHz).",
-                       "ssid": "Casa 2", "password": "Clave1234", "connect": ("Casa 2", "Clave1234")})
+                       "ssid": "Casa 2", "password": "Clave1234", "connect": ("Casa 2", "Clave1234")}, cards[1])
         root.tab = "devices"
         root._fill_devices([ClientDevice("aa:bb:cc:dd:ee:ff", "192.168.0.5", "PC", "2.4GHz"),
                             ClientDevice("11:22:33:44:55:66", "", "Bloq", "", blocked=True)])

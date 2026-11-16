@@ -172,6 +172,75 @@ KV = """
     group: "brand"
     font_size: "15sp"
 
+<NetCard>:
+    orientation: "vertical"
+    size_hint_y: None
+    height: self.minimum_height
+    padding: dp(16), dp(14)
+    spacing: dp(8)
+    canvas.before:
+        Color:
+            rgba: 0, 0.25, 0.1, 0.06
+        RoundedRectangle:
+            pos: self.x, self.y - dp(2)
+            size: self.size
+            radius: [dp(18)]
+        Color:
+            rgba: 1, 1, 1, 1
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(18)]
+    Section:
+        text: root.title
+    FieldLabel:
+        text: "Nombre de la red (SSID)"
+    BoxLayout:
+        size_hint_y: None
+        height: dp(44)
+        spacing: dp(8)
+        Field:
+            id: ssid
+            text: root.current_ssid
+            disabled: not root.ssid_edit
+        RoundButton:
+            id: ssid_btn
+            text: "Cancelar" if root.ssid_edit else "Cambiar"
+            bg: (0.55, 0.60, 0.57, 1) if root.ssid_edit else (0.180, 0.620, 0.310, 1)
+            size_hint_x: None
+            width: dp(100)
+            font_size: "15sp"
+            on_release: root.toggle_ssid()
+    FieldLabel:
+        text: "Nueva clave"
+    PasswordField:
+        id: new_pw
+        hint_text: "vacío = no cambiar la clave"
+    PasswordField:
+        id: confirm
+        hint_text: "repite la nueva clave"
+    AnchorLayout:
+        size_hint_y: None
+        height: dp(32)
+        BoxLayout:
+            size_hint_x: None
+            width: dp(170)
+            CheckBox:
+                size_hint_x: None
+                width: dp(40)
+                color: DARK
+                on_active: new_pw.masked = confirm.masked = not self.active
+            Label:
+                text: "Mostrar clave"
+                color: TEXT
+                text_size: self.size
+                halign: "left"
+                valign: "middle"
+    BigButton:
+        id: save_btn
+        text: "Guardar cambios de " + root.band_text
+        on_release: root.save()
+
 <Card@BoxLayout>:
     orientation: "vertical"
     size_hint_y: None
@@ -239,10 +308,11 @@ KV = """
             id: tab_wifi
             text: "Clave Wi‑Fi"
             state: "down"
-            on_state: if self.state == "down": root.tab = "wifi"
+            on_release: root.show_wifi()
         TabButton:
-            text: "Dispositivos"
-            on_state: if self.state == "down": root.show_devices()
+            id: tab_devices
+            text: "Conectados"
+            on_release: root.show_devices()
         RoundButton:
             text: "Salir"
             bg: 0.55, 0.60, 0.57, 1
@@ -426,92 +496,31 @@ KV = """
                     background_color: 0, 0, 0, 0
                     on_release: root.ask_unlock()
 
-            # ---------- pestaña Wi‑Fi ----------
+            # ---------- pestaña Wi‑Fi: una tarjeta por red existente ----------
             BoxLayout:
                 orientation: "vertical"
                 spacing: dp(14)
                 size_hint_y: None
                 id: wifi_tab
                 height: self.minimum_height
-                Card:
-                    Section:
-                        text: "Mis redes Wi‑Fi"
-                    Label:
-                        text: "Toca una red para elegirla"
-                        color: MUTED
-                        font_size: "13sp"
-                        size_hint_y: None
-                        height: dp(18)
-                        halign: "center"
-                        text_size: self.size
-                    BoxLayout:
-                        id: nets
-                        orientation: "vertical"
-                        size_hint_y: None
-                        height: self.minimum_height
-                        spacing: dp(8)
-                    SoftButton:
-                        text: "Mostrar contraseña actual"
-                        disabled: root.busy
-                        on_release: root.show_current_password()
-                Card:
-                    Section:
-                        text: "Nombre y clave"
-                    FieldLabel:
-                        text: "Nombre de la red (SSID)"
-                    BoxLayout:
-                        size_hint_y: None
-                        height: dp(44)
-                        spacing: dp(8)
-                        Field:
-                            id: new_ssid
-                            hint_text: "nombre de la red Wi‑Fi"
-                            disabled: not root.ssid_edit
-                        RoundButton:
-                            id: ssid_btn
-                            text: "Cancelar" if root.ssid_edit else "Cambiar"
-                            bg: (0.55, 0.60, 0.57, 1) if root.ssid_edit else (0.180, 0.620, 0.310, 1)
-                            size_hint_x: None
-                            width: dp(100)
-                            font_size: "15sp"
-                            on_release: root.toggle_ssid_edit()
-                    FieldLabel:
-                        text: "Nueva clave"
-                    PasswordField:
-                        id: new_pw
-                        hint_text: "vacío = no cambiar la clave"
-                    PasswordField:
-                        id: confirm
-                        hint_text: "repite la nueva clave"
-                    AnchorLayout:
-                        size_hint_y: None
-                        height: dp(32)
-                        BoxLayout:
-                            size_hint_x: None
-                            width: dp(170)
-                            CheckBox:
-                                size_hint_x: None
-                                width: dp(40)
-                                color: DARK
-                                on_active: new_pw.masked = confirm.masked = not self.active
-                            Label:
-                                text: "Mostrar clave"
-                                color: TEXT
-                                text_size: self.size
-                                halign: "left"
-                                valign: "middle"
-                    BigButton:
-                        text: "Aplicando…" if root.busy else "Guardar cambios"
-                        disabled: root.busy
-                        on_release: root.do_change()
-                    Label:
-                        text: "Al guardar, el celular se conectará solo a la red con el nombre y la clave nuevos."
-                        color: MUTED
-                        font_size: "12sp"
-                        halign: "center"
-                        size_hint_y: None
-                        text_size: self.width, None
-                        height: self.texture_size[1] + dp(4)
+                BoxLayout:
+                    id: nets
+                    orientation: "vertical"
+                    size_hint_y: None
+                    height: self.minimum_height
+                    spacing: dp(14)
+                SoftButton:
+                    text: "Mostrar contraseña actual"
+                    disabled: root.busy
+                    on_release: root.show_current_password()
+                Label:
+                    text: "Al guardar, el celular se conectará solo a la red con el nombre y la clave nuevos."
+                    color: MUTED
+                    font_size: "12sp"
+                    halign: "center"
+                    size_hint_y: None
+                    text_size: self.width, None
+                    height: self.texture_size[1] + dp(4)
 
             # ---------- pestaña Dispositivos ----------
             BoxLayout:
@@ -597,6 +606,41 @@ class PasswordField(Field):
 class NetToggle(ToggleButton):
     """Red Wi‑Fi como botón: verde = elegida."""
     pass
+
+
+class NetCard(BoxLayout):
+    """Tarjeta de una red Wi‑Fi: su nombre (bloqueado hasta «Cambiar») y su clave nueva."""
+    title = StringProperty("")
+    band_text = StringProperty("")
+    current_ssid = StringProperty("")
+    ssid_edit = BooleanProperty(False)
+
+    def __init__(self, net, root, **kw):
+        super().__init__(**kw)
+        self.net, self.root_ref = net, root
+        self.band_text = net.band.value + (" (invitados)" if net.guest else "")
+        self.title = "Red " + self.band_text
+        self.current_ssid = net.ssid
+
+    def toggle_ssid(self):
+        if self.ssid_edit:                       # Cancelar: vuelve al nombre actual y bloquea
+            self.ssid_edit = False
+            self.ids.ssid.text = self.current_ssid
+            return
+        self.ssid_edit = True
+        field = self.ids.ssid
+        Clock.schedule_once(lambda dt: setattr(field, "focus", True), 0.1)
+
+    def reset(self, new_ssid=None):
+        if new_ssid:
+            self.current_ssid = new_ssid
+        self.ssid_edit = False
+        self.ids.ssid.text = self.current_ssid
+        self.ids.new_pw.clear()
+        self.ids.confirm.clear()
+
+    def save(self):
+        self.root_ref.do_change(self)
 
 
 class RoundButton(Button):
@@ -755,18 +799,17 @@ class Root(BoxLayout):
     tab = StringProperty("wifi")
     brand_name = StringProperty("")
     host_shown = StringProperty("")
-    devices_title = StringProperty("Dispositivos")
+    devices_title = StringProperty("Conectados")
     status = StringProperty("")
     brand_choice = StringProperty("Detectar marca")
     top_pad = NumericProperty(dp(28))
-    ssid_edit = BooleanProperty(False)
-    unlocked = BooleanProperty(False)    # desbloqueo de técnico: no verifica el proveedor (queda guardado hasta desinstalar)   # el nombre de la red solo se edita tras tocar "Cambiar"
+    unlocked = BooleanProperty(False)    # desbloqueo de técnico: no verifica el proveedor (queda guardado hasta desinstalar)
     status_color = ListProperty(list(MUTED))
 
     def __init__(self, **kw):
         super().__init__(**kw)
         self.conn = None
-        self.checks = []  # (CheckBox, WifiNetwork)
+        self.cards = []  # una NetCard por red Wi‑Fi
         self.ids.host.text = suggest_host()
         self.unlocked = _load_unlock()
         # Clave de administrador recordada por router (IP): se rellena sola
@@ -804,6 +847,10 @@ class Root(BoxLayout):
             self.add_widget(tabs, index=1)        # entre la cabecera y el contenido
         elif not self.connected and tabs.parent is not None:
             tabs.parent.remove_widget(tabs)
+        # la pestaña marcada siempre coincide con la que se ve, y se muestra desde arriba
+        self.ids.tab_wifi.state = "down" if self.tab == "wifi" else "normal"
+        self.ids.tab_devices.state = "normal" if self.tab == "wifi" else "down"
+        self.ids.scroll.scroll_y = 1
 
     # --- utilidades --------------------------------------------------------
     def _run(self, work, on_ok, working="Trabajando…"):
@@ -1182,7 +1229,7 @@ class Root(BoxLayout):
         self.host_shown = conn.host.strip()
         self._fill_networks(nets)
         self.ids.devices.clear_widgets()
-        self.devices_title = "Dispositivos"
+        self.devices_title = "Conectados"
         self.ids.tab_wifi.state = "down"
         self.tab = "wifi"
         self.connected = True
@@ -1195,44 +1242,17 @@ class Root(BoxLayout):
         self._autofill_password()               # vuelve a poner la clave recordada de esta IP
         self.ids.nets.clear_widgets()
         self.ids.devices.clear_widgets()
-        self.checks = []
+        self.cards = []
         self._msg("Sesión cerrada.", ok=None)
 
     # --- pestaña Wi‑Fi -----------------------------------------------------
     def _fill_networks(self, nets):
+        """Una tarjeta por red encendida (si el router solo tiene 2.4 GHz, solo esa)."""
         self.ids.nets.clear_widgets()
-        self.checks = []
-        first = True
-        for n in nets:
-            label = f"{n.ssid}  ·  {n.band.value}" + ("  ·  invitados" if n.guest else "")
-            if not n.enabled:
-                label += "  (apagada)"
-            choose = n.enabled and not n.guest and first
-            btn = NetToggle(text=label, state="down" if choose else "normal")
-            first = first and not choose
-            btn.bind(state=lambda *_: self._prefill_ssid())
-            self.ids.nets.add_widget(btn)
-            self.checks.append((btn, n))
-        self._prefill_ssid()
-
-    def _selected_networks(self):
-        return [n for b, n in self.checks if b.state == "down"]
-
-    def _prefill_ssid(self):
-        sel = self._selected_networks()
-        self.ssid_edit = False                      # al cambiar de red, el nombre vuelve a bloquearse
-        self.ids.new_ssid.text = sel[0].ssid if sel else ""
-
-    def toggle_ssid_edit(self):
-        if self.ssid_edit:                          # Cancelar: vuelve al nombre actual y bloquea
-            self._prefill_ssid()
-            return
-        if not self._selected_networks():
-            self._alert("Elige una red", "Toca primero la red Wi‑Fi cuyo nombre quieres cambiar.")
-            return
-        self.ssid_edit = True
-        field = self.ids.new_ssid
-        Clock.schedule_once(lambda dt: setattr(field, "focus", True), 0.1)
+        shown = [n for n in nets if n.enabled] or list(nets)
+        self.cards = [NetCard(n, self) for n in shown]
+        for card in self.cards:
+            self.ids.nets.add_widget(card)
 
     def show_current_password(self):
         conn = self.conn
@@ -1247,36 +1267,31 @@ class Root(BoxLayout):
 
         self._run(lambda: current_passwords(conn), ok, "Leyendo la clave…")
 
-    def do_change(self):
-        selected = self._selected_networks()
-        new_ssid = self.ids.new_ssid.text if self.ssid_edit else ""
-        new_pw, confirm = self.ids.new_pw.secret, self.ids.confirm.secret
+    def do_change(self, card):
+        net = card.net
+        new_ssid = card.ids.ssid.text if card.ssid_edit else ""
+        new_pw, confirm = card.ids.new_pw.secret, card.ids.confirm.secret
         conn = self.conn
-        names = ", ".join(n.ssid for n in selected) or "—"
 
         def go():
-            self._run(lambda: change_wifi(conn, selected, new_ssid, new_pw, confirm),
-                      self._changed, "Guardando cambios…")
+            self._run(lambda: change_wifi(conn, [net], new_ssid, new_pw, confirm),
+                      lambda result: self._changed(result, card), "Guardando cambios…")
 
-        if not selected:
-            self._alert("Elige una red", "Toca la red Wi‑Fi que quieres cambiar.")
-            return
         changes = []
-        if new_ssid.strip() and any(new_ssid.strip() != n.ssid for n in selected):
+        if new_ssid.strip() and new_ssid.strip() != net.ssid:
             changes.append(f"nombre: {new_ssid.strip()}")
         if new_pw or confirm:
             changes.append("clave nueva")
         if not changes:
             go()  # muestra "No hay cambios"
             return
-        self._confirm("Guardar cambios", f"Red: {names}\nCambios: {', '.join(changes)}.\n\n"
-                      "Los equipos conectados se desconectarán. Este celular se volverá a "
+        self._confirm("Guardar cambios", f"Red {card.band_text}: {net.ssid}\nCambios: {', '.join(changes)}.\n\n"
+                      "Los equipos conectados a esta red se desconectarán. Este celular se volverá a "
                       "conectar solo con los datos nuevos.", "Guardar", GREEN, go)
 
-    def _changed(self, result):
-        self.ids.new_pw.clear()
-        self.ids.confirm.clear()
-        self.ssid_edit = False
+    def _changed(self, result, card=None):
+        if card is not None:
+            card.reset(result.get("ssid"))
         self._msg(result["message"], ok=True)
         how = None
         if result.get("connect"):
@@ -1295,7 +1310,10 @@ class Root(BoxLayout):
             rows.append(("Clave", result["password"]))
         self._password_popup("Cambios guardados", result["message"] + "\n\n" + note, rows)
 
-    # --- pestaña Dispositivos ----------------------------------------------
+    # --- pestañas ----------------------------------------------------------
+    def show_wifi(self):
+        self.tab = "wifi"
+
     def show_devices(self):
         self.tab = "devices"
         if not self.ids.devices.children:
