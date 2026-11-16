@@ -671,3 +671,19 @@ def test_update_download_verifies_sha(tmp_path):
             assert prog and prog[-1][0] == len(payload)
     finally:
         srv.shutdown()
+
+
+def test_download_id_varargs_like_pyjnius():
+    """pyjnius empaqueta los argumentos de un método `long...`; una lista quedaría anidada."""
+    from wifichanger.updater import _call_ids
+    got = []
+
+    def varargs_method(*args):          # imita pyjnius: args -> (args,)
+        packed = list(args)
+        for x in packed:
+            if not isinstance(x, int):
+                raise TypeError("an integer is required")
+        got.append(packed)
+
+    _call_ids(varargs_method, 42)
+    assert got == [[42]]

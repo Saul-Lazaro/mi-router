@@ -83,6 +83,15 @@ def download_desktop(info: dict, on_progress, on_done, on_error, folder: str | N
 
 
 # ---------------------------------------------------------------- Android
+def _call_ids(method, download_id):
+    """Métodos Java `long...` (setFilterById, remove): pyjnius ya arma el arreglo con los
+    argumentos sueltos; pasar una lista lo anida y da «an integer is required»."""
+    try:
+        return method(int(download_id))
+    except TypeError:
+        return method([int(download_id)])  # versiones de pyjnius sin soporte de varargs
+
+
 class AndroidDownload:
     """DownloadManager del sistema. `poll()` se llama desde la UI (Clock) cada ~0.5 s y
     devuelve ("running", hecho, total) | ("done", ruta, uri) | ("error", mensaje, None)."""
@@ -114,7 +123,7 @@ class AndroidDownload:
 
     def poll(self):
         q = __import__("jnius").autoclass("android.app.DownloadManager$Query")()
-        q.setFilterById([self.id])
+        _call_ids(q.setFilterById, self.id)
         c = self.dm.query(q)
         try:
             if not c.moveToFirst():
@@ -136,7 +145,7 @@ class AndroidDownload:
 
     def cancel(self):
         try:
-            self.dm.remove([self.id])
+            _call_ids(self.dm.remove, self.id)
         except Exception:  # noqa: BLE001
             pass
 
