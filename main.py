@@ -4,6 +4,7 @@ import threading
 from urllib.parse import quote
 
 from kivy.app import App
+from kivy.base import ExceptionHandler, ExceptionManager
 from kivy.clock import Clock, mainthread
 from kivy.core.window import Window
 from kivy.lang import Builder
@@ -661,6 +662,37 @@ def _save_password(host: str, password: str) -> None:
         pass
 
 
+def _log_error(where: str, exc: BaseException) -> None:
+    """Guarda el detalle del error en la carpeta privada de la app (errores.log)."""
+    import os
+    import traceback
+    try:
+        app = App.get_running_app()
+        path = os.path.join(app.user_data_dir if app else ".", "errores.log")
+        with open(path, "a") as fh:
+            fh.write(f"--- {where}\n" + "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+class _KeepAlive(ExceptionHandler):
+    """Si ocurre un error inesperado, la app NO se cierra: muestra el detalle."""
+
+    def handle_exception(self, inst):
+        if isinstance(inst, (KeyboardInterrupt, SystemExit)):
+            return ExceptionManager.RAISE
+        _log_error("global", inst)
+        app = App.get_running_app()
+        root = getattr(app, "root", None)
+        if root is not None and hasattr(root, "_alert"):
+            msg = f"{type(inst).__name__}: {inst}"
+            Clock.schedule_once(lambda dt: root._alert("Error inesperado",
+                                "Ocurrió un error, pero la app sigue funcionando. "
+                                "Envía una captura de este mensaje a soporte:\n\n" + msg[:400]), 0)
+            return ExceptionManager.PASS
+        return ExceptionManager.RAISE
+
+
 def open_in_browser(url: str) -> None:
     """Navegador del sistema (Android: Intent ACTION_VIEW; escritorio: webbrowser)."""
     from wifichanger.android_wifi import on_android
@@ -917,23 +949,36 @@ class Root(BoxLayout):
             try:
                 dl = updater.AndroidDownload(info)
             except Exception as e:  # noqa: BLE001
+                _log_error("AndroidDownload", e)
                 popup.dismiss()
-                self._alert("Actualización", f"No se pudo iniciar la descarga: {e}")
+                self._download_failed(info, f"No se pudo iniciar la descarga: {e}")
                 return
-            self._dl_action.bind(on_release=lambda *_: (dl.cancel(), self._dl_poll_ev.cancel(), popup.dismiss()))
+            self._dl_poll_ev = None
+
+            def stop():
+                if self._dl_poll_ev is not None:
+                    self._dl_poll_ev.cancel()
+
+            self._dl_action.bind(on_release=lambda *_: (dl.cancel(), stop(), popup.dismiss()))
 
             def poll(dt):
-                state, a, b = dl.poll()
-                if state == "running":
-                    self._update_progress(a, b)
-                elif state == "done":
-                    self._dl_poll_ev.cancel()
-                    self._update_progress(1, 1)
-                    self._ready_to_install(b)
-                else:
-                    self._dl_poll_ev.cancel()
+                try:
+                    state, a, b = dl.poll()
+                    if state == "running":
+                        self._update_progress(a, b)
+                    elif state == "done":
+                        stop()
+                        self._update_progress(1, 1)
+                        self._ready_to_install(b)
+                    else:
+                        stop()
+                        popup.dismiss()
+                        self._download_failed(info, a)
+                except Exception as e:  # noqa: BLE001  (nunca cerrar la app por esto)
+                    _log_error("poll", e)
+                    stop()
                     popup.dismiss()
-                    self._alert("Actualización", a)
+                    self._download_failed(info, f"Error durante la descarga: {e}")
             self._dl_poll_ev = Clock.schedule_interval(poll, 0.5)
         else:
             self._dl_action.bind(on_release=lambda *_: popup.dismiss())
@@ -941,7 +986,25 @@ class Root(BoxLayout):
                 info,
                 on_progress=mainthread(lambda d, t: self._update_progress(d, t)),
                 on_done=mainthread(lambda path: self._ready_to_install(path)),
-                on_error=mainthread(lambda msg: (popup.dismiss(), self._alert("Actualización", msg))))
+                on_error=mainthread(lambda msg: (popup.dismiss(), self._download_failed(info, msg))))
+
+    def _download_failed(self, info, message):
+        """Si la descarga dentro de la app falla, ofrece descargar con el navegador."""
+        box = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(12), size_hint_y=None)
+        box.bind(minimum_height=box.setter("height"))
+        box.add_widget(_wrap_label(message + "\n\nPuedes descargar la actualización con el navegador "
+                                   "y luego abrir el archivo para instalarla.", halign="center"))
+        popup = Popup(title="No se pudo actualizar", content=box, size_hint=(0.9, None))
+        web = RoundButton(text="Descargar con el navegador", size_hint_y=None, height=dp(48))
+        web.bind(on_release=lambda *_: (popup.dismiss(), open_in_browser(info["url"])))
+        close = RoundButton(text="Cerrar", size_hint_y=None, height=dp(46), bg=[0.55, 0.60, 0.57, 1])
+        close.bind(on_release=lambda *_: popup.dismiss())
+        box.add_widget(web)
+        box.add_widget(close)
+        box.bind(height=lambda *_: setattr(popup, "height", box.height + dp(92)))
+        popup.height = box.height + dp(92)
+        self._fail_popup = popup
+        popup.open()
 
     def _update_progress(self, done, total):
         pct = (100.0 * done / total) if total else 0
@@ -955,14 +1018,18 @@ class Root(BoxLayout):
         self._dl_detail.text = "Toca «Instalar» en la ventana de Android."
 
         def install(*_):
-            if on_android():
-                if not updater.can_install_android():
-                    self._dl_detail.text = "Permite «Instalar apps desconocidas» para Maxs Wifi y vuelve a tocar Instalar."
-                    updater.open_install_permission_android()
-                    return
-                updater.install_android(target)
-            else:
-                open_in_browser(target)
+            try:
+                if on_android():
+                    if not updater.can_install_android():
+                        self._dl_detail.text = "Permite «Instalar apps desconocidas» y vuelve a tocar Instalar."
+                        updater.open_install_permission_android()
+                        return
+                    updater.install_android(target)
+                else:
+                    open_in_browser(target)
+            except Exception as e:  # noqa: BLE001
+                _log_error("install", e)
+                self._dl_detail.text = f"No se pudo abrir el instalador: {e}"
         # el botón Cancelar se reemplaza por Instalar
         new_btn = RoundButton(text="Instalar", size_hint_y=None, height=dp(46))
         new_btn.bind(on_release=install)
@@ -1292,4 +1359,5 @@ class MaxsWifiApp(App):
 
 
 if __name__ == "__main__":
+    ExceptionManager.add_handler(_KeepAlive())
     MaxsWifiApp().run()

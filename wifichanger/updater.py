@@ -103,8 +103,10 @@ class AndroidDownload:
         Uri = autoclass("android.net.Uri")
         Request = autoclass("android.app.DownloadManager$Request")
         req = Request(Uri.parse(info["url"]))
-        req.setTitle(f"Maxs Wifi {info.get('version', '')}")
-        req.setDescription("Descargando actualización")
+        # setTitle/setDescription reciben CharSequence: pyjnius no convierte str solo
+        String = autoclass("java.lang.String")
+        req.setTitle(cast("java.lang.CharSequence", String(f"Maxs Wifi {info.get('version', '')}")))
+        req.setDescription(cast("java.lang.CharSequence", String("Descargando actualización")))
         req.setMimeType(APK_MIME)
         req.setNotificationVisibility(Request.VISIBILITY_VISIBLE)
         req.setDestinationInExternalFilesDir(self.activity, Environment.DIRECTORY_DOWNLOADS, name)

@@ -161,6 +161,20 @@ def unlock_step(dt):
         assert opened and opened[-1] == "/tmp/MaxsWifi-9.9.9.apk", opened
         root._dl_popup.dismiss(animation=False)
         opened.clear()
+        # si la descarga falla: ventana con "Descargar con el navegador" (la app no se cierra)
+        def failing_download(info, on_progress, on_done, on_error, folder=None):
+            on_progress(100, 1000)
+            on_error("sin conexión")
+        main.updater.download_desktop = failing_download
+        root._start_download(fake)
+        texts = [w.text for w in root._fail_popup.content.children if hasattr(w, "text")]
+        assert "Descargar con el navegador" in texts, texts
+        next(w for w in root._fail_popup.content.children if getattr(w, "text", "") == "Descargar con el navegador").dispatch("on_release")
+        assert opened == ["http://x/descargar"], opened
+        opened.clear()
+        # manejador global: un error inesperado no cierra la app
+        from kivy.base import ExceptionManager
+        assert main._KeepAlive().handle_exception(ValueError("prueba")) == ExceptionManager.PASS
 
         # mensaje del proveedor: números con botón Llamar y SIN "Abrir panel del router"
         root._alert("Sin conexión con el proveedor", main.ISP_MESSAGE, phones=main.ISP_PHONES, center=True)
