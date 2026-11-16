@@ -27,6 +27,18 @@ Uso: conéctate al Wi‑Fi del router, abre la app (la IP se rellena sola), escr
 contraseña de administrador y pulsa **Conectar**. Arriba tienes dos pestañas:
 **Clave Wi‑Fi** y **Dispositivos** (con **Actualizar**, **Bloquear** y **Desbloquear**).
 
+## Publicar una actualización
+
+La app revisa al abrir (y con «Buscar actualización») la API pública del panel
+Red Maxs Solution: `https://redmax.maxsolution.pe/api/v1/app-wifi/version?version=<instalada>`.
+
+1. Sube el número en `wifichanger/version.py` (ej. `0.11.0` → `0.12.0`). Buildozer lo toma de ahí.
+2. Haz push: GitHub Actions compila y firma el APK con la llave fija del repositorio.
+3. Descarga el artefacto **mi-router-apk** y súbelo en el panel → **APP Max Wifi**
+   con el **mismo número de versión** (marca «obligatoria» si debe forzarse).
+4. Los celulares verán «Actualización disponible», descargarán con barra de progreso
+   (se verifica el SHA-256) y abrirán el instalador de Android.
+
 ## Herramienta de línea de comandos (para probar en el PC)
 ```bash
 pip install -r requirements.txt

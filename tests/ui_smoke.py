@@ -5,6 +5,7 @@ import sys
 import traceback
 
 os.environ.setdefault("KIVY_NO_ARGS", "1")
+os.environ["MAXSWIFI_NO_AUTOUPDATE"] = "1"
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -140,6 +141,25 @@ def unlock_step(dt):
         assert root._last_alert.height < dp_(320), f"ventana de error demasiado alta: {root._last_alert.height}"
         root.open_panel()
         assert opened == ["http://192.168.0.1"], opened
+        # versión visible y actualización con barra de progreso (sin red: descarga simulada)
+        assert main.APP_VERSION in root.ids.update_btn.text
+        fake = {"disponible": True, "hay_nueva": True, "version": "9.9.9", "obligatoria": False,
+                "notas": "Prueba", "tamano": 1000, "sha256": "", "url": "http://x/descargar"}
+        root._offer_update(fake)
+        root._update_popup.dismiss(animation=False)
+        def fake_download(info, on_progress, on_done, on_error, folder=None):
+            on_progress(500, 1000)
+            on_progress(1000, 1000)
+            on_done("/tmp/MaxsWifi-9.9.9.apk")
+        main.updater.download_desktop = fake_download
+        main.mainthread = lambda f: f          # callbacks inmediatos en la prueba
+        root._start_download(fake)
+        assert root._dl_bar.value == 100, root._dl_bar.value
+        assert root._dl_action.text == "Instalar"
+        assert opened and opened[-1] == "/tmp/MaxsWifi-9.9.9.apk", opened
+        root._dl_popup.dismiss(animation=False)
+        opened.clear()
+
         # mensaje del proveedor: números con botón Llamar y SIN "Abrir panel del router"
         root._alert("Sin conexión con el proveedor", main.ISP_MESSAGE, phones=main.ISP_PHONES, center=True)
         texts = [w.text for w in root._last_alert.content.children if hasattr(w, "text")]

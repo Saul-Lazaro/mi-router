@@ -16,11 +16,14 @@ from kivy.uix.checkbox import CheckBox
 from kivy.uix.label import Label
 from kivy.core.clipboard import Clipboard
 from kivy.uix.popup import Popup
+from kivy.uix.progressbar import ProgressBar
 from kivy.uix.textinput import TextInput
 from kivy.utils import escape_markup
 
 from wifichanger.base import RouterError
-from wifichanger.android_wifi import connect_to_wifi
+from wifichanger import updater
+from wifichanger.android_wifi import connect_to_wifi, on_android
+from wifichanger.version import __version__ as APP_VERSION
 from wifichanger.isp import ISP_MESSAGE, ISP_PHONES, WHATSAPP_TEXT, check_unlock_password, isp_reachable
 from wifichanger.service import (BRAND_KEYS, Connection, change_wifi, connect, current_passwords,
                                  list_clients, set_blocked, suggest_host)
@@ -372,6 +375,18 @@ KV = """
                     background_color: 0, 0, 0, 0
                     on_release: root.open_panel()
                 Button:
+                    id: update_btn
+                    text: "Buscar actualización  (versión " + app.version + ")"
+                    size_hint_y: None
+                    height: dp(30)
+                    font_size: "14sp"
+                    color: DARK
+                    background_normal: ""
+                    background_down: ""
+                    background_color: 0, 0, 0, 0
+                    disabled: root.busy
+                    on_release: root.check_update(manual=True)
+                Button:
                     id: unlock_btn
                     text: "Modo técnico activo" if root.unlocked else "Desbloquear"
                     size_hint_y: None
@@ -518,7 +533,7 @@ KV = """
                     allow_stretch: True
                     keep_ratio: True
                 Label:
-                    text: "Group S & M · Max's Solution E.I.R.L."
+                    text: "Group S & M · Max's Solution E.I.R.L.  ·  Versión " + app.version
                     color: MUTED
                     font_size: "12sp"
                     size_hint_y: None
@@ -827,6 +842,125 @@ class Root(BoxLayout):
         self._last_alert = popup
         popup.open()
 
+    # --- actualización de la app (panel Red Maxs Solution) ---------------------
+    def check_update(self, manual=False):
+        """Consulta si hay versión nueva. Al abrir la app se hace en silencio."""
+        def done(info):
+            if info:
+                self._offer_update(info)
+            elif manual:
+                self._alert("Actualización", f"Ya tienes la última versión ({APP_VERSION}).")
+
+        if manual:
+            self._run(lambda: updater.check_for_update(APP_VERSION), done, "Buscando actualización…")
+        else:
+            threading.Thread(target=lambda: mainthread(done)(updater.check_for_update(APP_VERSION)),
+                             daemon=True).start()
+
+    def _offer_update(self, info):
+        required = bool(info.get("obligatoria"))
+        size = f"{int(info.get('tamano') or 0) / 1048576:.1f} MB" if info.get("tamano") else ""
+        text = f"Hay una nueva versión: {info.get('version')}" + (f"  ({size})" if size else "")
+        text += f"\nTienes la versión {APP_VERSION}."
+        if info.get("notas"):
+            text += f"\n\nNovedades:\n{info['notas']}"
+        if required:
+            text += "\n\nEsta actualización es obligatoria para seguir usando la app."
+        box = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(12), size_hint_y=None)
+        box.bind(minimum_height=box.setter("height"))
+        box.add_widget(_wrap_label(text, halign="center"))
+        popup = Popup(title="Actualización disponible", content=box, size_hint=(0.9, None),
+                      auto_dismiss=not required)
+        go = RoundButton(text="Actualizar ahora", size_hint_y=None, height=dp(50))
+        go.bind(on_release=lambda *_: (popup.dismiss(), self._start_download(info)))
+        box.add_widget(go)
+        if not required:
+            later = RoundButton(text="Después", size_hint_y=None, height=dp(46), bg=[0.55, 0.60, 0.57, 1])
+            later.bind(on_release=lambda *_: popup.dismiss())
+            box.add_widget(later)
+        box.bind(height=lambda *_: setattr(popup, "height", box.height + dp(92)))
+        popup.height = box.height + dp(92)
+        self._update_popup = popup
+        popup.open()
+
+    def _start_download(self, info):
+        """Ventana con barra de progreso mientras se descarga el APK nuevo."""
+        required = bool(info.get("obligatoria"))
+        box = BoxLayout(orientation="vertical", padding=dp(14), spacing=dp(12))
+        self._dl_title = Label(text=f"Descargando versión {info.get('version')}…", color=DARK,
+                               bold=True, font_size="17sp", size_hint_y=None, height=dp(28))
+        self._dl_bar = ProgressBar(max=100, value=0, size_hint_y=None, height=dp(24))
+        self._dl_detail = Label(text="Preparando…", color=MUTED, font_size="14sp",
+                                size_hint_y=None, height=dp(22))
+        for w in (self._dl_title, self._dl_bar, self._dl_detail):
+            box.add_widget(w)
+        self._dl_action = RoundButton(text="Cancelar", size_hint_y=None, height=dp(46),
+                                      bg=[0.55, 0.60, 0.57, 1], disabled=required)
+        box.add_widget(self._dl_action)
+        popup = Popup(title="Actualizando Maxs Wifi", content=box, size_hint=(0.9, None),
+                      height=dp(280), auto_dismiss=False)
+        self._dl_popup = popup
+        popup.open()
+
+        if on_android():
+            try:
+                dl = updater.AndroidDownload(info)
+            except Exception as e:  # noqa: BLE001
+                popup.dismiss()
+                self._alert("Actualización", f"No se pudo iniciar la descarga: {e}")
+                return
+            self._dl_action.bind(on_release=lambda *_: (dl.cancel(), self._dl_poll_ev.cancel(), popup.dismiss()))
+
+            def poll(dt):
+                state, a, b = dl.poll()
+                if state == "running":
+                    self._update_progress(a, b)
+                elif state == "done":
+                    self._dl_poll_ev.cancel()
+                    self._update_progress(1, 1)
+                    self._ready_to_install(b)
+                else:
+                    self._dl_poll_ev.cancel()
+                    popup.dismiss()
+                    self._alert("Actualización", a)
+            self._dl_poll_ev = Clock.schedule_interval(poll, 0.5)
+        else:
+            self._dl_action.bind(on_release=lambda *_: popup.dismiss())
+            updater.download_desktop(
+                info,
+                on_progress=mainthread(lambda d, t: self._update_progress(d, t)),
+                on_done=mainthread(lambda path: self._ready_to_install(path)),
+                on_error=mainthread(lambda msg: (popup.dismiss(), self._alert("Actualización", msg))))
+
+    def _update_progress(self, done, total):
+        pct = (100.0 * done / total) if total else 0
+        self._dl_bar.value = pct
+        mb = lambda x: f"{x / 1048576:.1f}"  # noqa: E731
+        self._dl_detail.text = (f"{pct:.0f}%  ·  {mb(done)} de {mb(total)} MB" if total
+                                else f"{mb(done)} MB descargados")
+
+    def _ready_to_install(self, target):
+        self._dl_title.text = "Descarga completa"
+        self._dl_detail.text = "Toca «Instalar» en la ventana de Android."
+
+        def install(*_):
+            if on_android():
+                if not updater.can_install_android():
+                    self._dl_detail.text = "Permite «Instalar apps desconocidas» para Maxs Wifi y vuelve a tocar Instalar."
+                    updater.open_install_permission_android()
+                    return
+                updater.install_android(target)
+            else:
+                open_in_browser(target)
+        # el botón Cancelar se reemplaza por Instalar
+        new_btn = RoundButton(text="Instalar", size_hint_y=None, height=dp(46))
+        new_btn.bind(on_release=install)
+        parent = self._dl_action.parent
+        parent.remove_widget(self._dl_action)
+        parent.add_widget(new_btn)
+        self._dl_action = new_btn
+        install()
+
     def open_panel(self):
         """Abre el panel web del router (la IP escrita) en el navegador del celular."""
         host = (self.conn.host if self.connected and self.conn else self.ids.host.text).strip()
@@ -1132,10 +1266,18 @@ class Root(BoxLayout):
 class MaxsWifiApp(App):
     title = "Maxs Wifi"
 
+    version = APP_VERSION
+
     def build(self):
         Window.clearcolor = BG
         Builder.load_string(KV)
         return Root()
+
+    def on_start(self):
+        # revisa en silencio si hay versión nueva en el panel Red Maxs Solution
+        import os
+        if not os.environ.get("MAXSWIFI_NO_AUTOUPDATE"):
+            Clock.schedule_once(lambda dt: self.root.check_update(manual=False), 2)
 
 
 if __name__ == "__main__":

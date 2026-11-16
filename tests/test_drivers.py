@@ -608,3 +608,66 @@ def test_isp_tcp_fallback_only_without_ping(monkeypatch):
     monkeypatch.setattr(isp, "_ping", lambda host, timeout: None)
     monkeypatch.setattr(isp, "_tcp_probe", lambda host, timeout: False)
     assert not isp.isp_reachable("10.99.0.1", timeout=1)
+
+
+# ------------------------------------------------ actualización desde el panel Red Maxs
+from wifichanger import updater
+
+
+class _Resp:
+    def __init__(self, data):
+        self._d = data
+
+    def json(self):
+        return self._d
+
+
+def test_update_available(monkeypatch):
+    seen = {}
+
+    def fake_get(url, params=None, timeout=None):
+        seen["url"], seen["params"] = url, params
+        return _Resp({"disponible": True, "hay_nueva": True, "version": "0.12.0", "url": "https://x/descargar"})
+    monkeypatch.setattr(updater.requests, "get", fake_get)
+    info = updater.check_for_update("0.11.0")
+    assert info["version"] == "0.12.0"
+    assert seen["url"].endswith("/api/v1/app-wifi/version") and seen["params"] == {"version": "0.11.0"}
+
+
+def test_update_not_available(monkeypatch):
+    monkeypatch.setattr(updater.requests, "get", lambda *a, **k: _Resp({"disponible": False, "hay_nueva": False}))
+    assert updater.check_for_update("0.11.0") is None
+    monkeypatch.setattr(updater.requests, "get", lambda *a, **k: _Resp(
+        {"disponible": True, "hay_nueva": True, "version": "0.10.0", "url": "u"}))
+    assert updater.check_for_update("0.11.0") is None      # nunca a una versión más vieja
+
+
+def test_update_download_verifies_sha(tmp_path):
+    import hashlib
+    payload = b"APK" * 50000
+    good = hashlib.sha256(payload).hexdigest()
+
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+    srv = HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{srv.server_port}/descargar"
+    try:
+        for sha, ok in ((good, True), ("0" * 64, False)):
+            done, prog, errs = threading.Event(), [], []
+            updater.download_desktop({"version": "9.0.0", "url": url, "sha256": sha},
+                                     on_progress=lambda d, t: prog.append((d, t)),
+                                     on_done=lambda p: (errs.append(None), done.set()),
+                                     on_error=lambda m: (errs.append(m), done.set()),
+                                     folder=str(tmp_path))
+            assert done.wait(10)
+            assert (errs[0] is None) == ok, errs
+            assert prog and prog[-1][0] == len(payload)
+    finally:
+        srv.shutdown()

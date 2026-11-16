@@ -5,7 +5,9 @@ package.domain = com.wifichanger
 source.dir = .
 source.include_exts = py,png
 source.exclude_dirs = tests, bin, .buildozer, .github, .git, __pycache__
-version = 0.10.7
+# La versión se lee de wifichanger/version.py (también la muestra la app)
+version.regex = __version__ = ['"](.*)['"]
+version.filename = %(source.dir)s/wifichanger/version.py
 
 # Logo de Group S & M - Max's Solution E.I.R.L.
 icon.filename = %(source.dir)s/icon.png
@@ -20,7 +22,7 @@ orientation = portrait
 fullscreen = 0
 
 # INTERNET: hablar con el router. ACCESS_WIFI_STATE: leer la IP del gateway.
-android.permissions = INTERNET, ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE, CHANGE_WIFI_STATE
+android.permissions = INTERNET, ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE, CHANGE_WIFI_STATE, REQUEST_INSTALL_PACKAGES
 android.api = 36
 android.minapi = 24
 android.ndk = 28c
