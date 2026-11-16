@@ -17,7 +17,7 @@ La forma más simple de compilar es GitHub Actions (no necesitas el SDK de Andro
    la carpeta oculta `.github`).
 2. En la pestaña **Actions**, el workflow *Compilar APK* arranca solo con cada push
    (o pulsa *Run workflow*). La primera vez tarda ~30–40 min; luego usa caché.
-3. Descarga el artefacto **mi-router-apk** (un .zip con el .apk).
+3. Descarga el artefacto **MaxsWifi-<versión>** (contiene `MaxsWifi-<versión>.apk`) (un .zip con el .apk).
 4. En el teléfono, permite "Instalar apps de origen desconocido" e instala el APK.
 
 Compilar en tu PC (Linux o WSL): `pip install buildozer cython==0.29.34` y luego
@@ -34,7 +34,7 @@ Red Maxs Solution: `https://redmax.maxsolution.pe/api/v1/app-wifi/version?versio
 
 1. Sube el número en `wifichanger/version.py` (ej. `0.11.0` → `0.12.0`). Buildozer lo toma de ahí.
 2. Haz push: GitHub Actions compila y firma el APK con la llave fija del repositorio.
-3. Descarga el artefacto **mi-router-apk** y súbelo en el panel → **APP Max Wifi**
+3. Descarga el artefacto **MaxsWifi-<versión>** (contiene `MaxsWifi-<versión>.apk`) y súbelo en el panel → **APP Max Wifi**
    con el **mismo número de versión** (marca «obligatoria» si debe forzarse).
 4. Los celulares verán «Actualización disponible», descargarán con barra de progreso
    (se verifica el SHA-256) y abrirán el instalador de Android.

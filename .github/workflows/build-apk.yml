@@ -80,8 +80,17 @@ jobs:
           EXPECTED=$(keytool -list -v -keystore .github/keystore/debug.keystore -storepass android | grep "SHA256:" | sed 's/.*SHA256: //; s/://g' | tr 'A-F' 'a-f')
           "$BT/apksigner" verify --print-certs bin/*.apk | grep -qi "$EXPECTED" && echo "FIRMA OK (llave fija)"
 
+      # El archivo y el artefacto llevan el número de versión (de wifichanger/version.py)
+      - name: Nombre con la versión
+        id: ver
+        run: |
+          VER=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' wifichanger/version.py)
+          mv bin/*.apk "bin/MaxsWifi-$VER.apk"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          ls -la bin/
+
       - uses: actions/upload-artifact@v4
         with:
-          name: mi-router-apk
-          path: bin/*.apk
+          name: MaxsWifi-${{ steps.ver.outputs.version }}
+          path: bin/MaxsWifi-*.apk
           if-no-files-found: error

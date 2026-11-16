@@ -260,6 +260,32 @@ KV = """
             size_hint_y: None
             height: self.minimum_height
 
+            # ---------- logo arriba con el nombre de la empresa y la versión ----------
+            Card:
+                id: brand_card
+                padding: dp(12), dp(10)
+                spacing: dp(4)
+                Image:
+                    source: "logo.png"
+                    size_hint_y: None
+                    height: dp(120)
+                    allow_stretch: True
+                    keep_ratio: True
+                Label:
+                    text: "Group S & M · Max's Solution E.I.R.L."
+                    color: DARK
+                    bold: True
+                    font_size: "14sp"
+                    size_hint_y: None
+                    height: dp(20)
+                Label:
+                    id: version_label
+                    text: "Versión " + app.version
+                    color: MUTED
+                    font_size: "13sp"
+                    size_hint_y: None
+                    height: dp(18)
+
             # ---------- inicio de sesión ----------
             Card:
                 id: login
@@ -523,21 +549,6 @@ KV = """
                 height: (self.texture_size[1] + dp(8)) if root.status else 0
                 halign: "center"
 
-            # ---------- logo grande al pie (inicio de sesión y dentro de la app) ----------
-            Card:
-                padding: dp(12), dp(12)
-                Image:
-                    source: "logo.png"
-                    size_hint_y: None
-                    height: dp(150)
-                    allow_stretch: True
-                    keep_ratio: True
-                Label:
-                    text: "Group S & M · Max's Solution E.I.R.L.  ·  Versión " + app.version
-                    color: MUTED
-                    font_size: "12sp"
-                    size_hint_y: None
-                    height: dp(18)
 """
 
 
@@ -756,7 +767,7 @@ class Root(BoxLayout):
                 w.parent.remove_widget(w)
         for w in wanted:
             if w.parent is None:
-                content.add_widget(w, index=len(content.children))  # arriba del todo
+                content.add_widget(w, index=len(content.children) - 1)  # justo debajo del logo
         if self.connected and tabs.parent is None:
             self.add_widget(tabs, index=1)        # entre la cabecera y el contenido
         elif not self.connected and tabs.parent is not None:

@@ -143,6 +143,8 @@ def unlock_step(dt):
         assert opened == ["http://192.168.0.1"], opened
         # versión visible y actualización con barra de progreso (sin red: descarga simulada)
         assert main.APP_VERSION in root.ids.update_btn.text
+        assert root.ids.version_label.text == "Versión " + main.APP_VERSION
+        assert root.ids.content.children[-1] is root.ids.brand_card.__self__, "el logo debe ir arriba"
         fake = {"disponible": True, "hay_nueva": True, "version": "9.9.9", "obligatoria": False,
                 "notas": "Prueba", "tamano": 1000, "sha256": "", "url": "http://x/descargar"}
         root._offer_update(fake)
