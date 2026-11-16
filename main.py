@@ -608,6 +608,12 @@ class NetToggle(ToggleButton):
     pass
 
 
+def _visible_networks(nets):
+    """Las redes que se muestran: solo las encendidas (si el router tiene solo 2.4 GHz, solo
+    esa). Si ninguna figura como encendida, se muestran todas."""
+    return [n for n in nets if n.enabled] or list(nets)
+
+
 class NetCard(BoxLayout):
     """Tarjeta de una red Wi‑Fi: su nombre (bloqueado hasta «Cambiar») y su clave nueva."""
     title = StringProperty("")
@@ -1249,7 +1255,7 @@ class Root(BoxLayout):
     def _fill_networks(self, nets):
         """Una tarjeta por red encendida (si el router solo tiene 2.4 GHz, solo esa)."""
         self.ids.nets.clear_widgets()
-        shown = [n for n in nets if n.enabled] or list(nets)
+        shown = _visible_networks(nets)
         self.cards = [NetCard(n, self) for n in shown]
         for card in self.cards:
             self.ids.nets.add_widget(card)
@@ -1258,7 +1264,9 @@ class Root(BoxLayout):
         conn = self.conn
 
         def ok(nets):
-            rows = [(f"{n.ssid}  ·  {n.band.value}", n.password) for n in nets if n.password is not None]
+            shown = [n for n in _visible_networks(nets) if n.password is not None]
+            rows = [(n.ssid if len(shown) == 1 else f"{n.ssid}  ·  {n.band.value}", n.password)
+                    for n in shown]
             if not rows:
                 self._alert("Contraseña actual", "Este router no permite leer la clave actual desde la app.")
                 return

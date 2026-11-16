@@ -225,6 +225,7 @@ def wifi_taps(dt):
         cards = root.cards
         assert [c.net.ssid for c in cards] == ["Casa", "Casa_5G"], [c.net.ssid for c in cards]
         card = cards[0]
+        assert [n.ssid for n in main._visible_networks(c.net for c in cards)] == ["Casa", "Casa_5G"]
         assert card.ids.ssid.text == "Casa"
         # el nombre de la red está bloqueado hasta tocar "Cambiar"
         tap(card.ids.ssid)
