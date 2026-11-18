@@ -423,13 +423,16 @@ class FakeWR840N(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self.send_response(200); self.end_headers()
-        self.wfile.write(b'<html><script src="/js/oid_str.js"></script><script src="/js/lib.js"></script>'
+        extra = b'<script src="/js/encrypt.js"></script>' if FakeWR840N.st.get("md5") else b""
+        self.wfile.write(extra + b'<html><script src="/js/oid_str.js"></script><script src="/js/lib.js"></script>'
                          b'<script>var modelName="TL-WR840N";</script></html>')
 
     def do_POST(self):
         st = FakeWR840N.st
         body = self.rfile.read(int(self.headers.get("Content-Length", 0))).decode()
-        good = "Basic " + _b64.b64encode(f"admin:{ADMIN}".encode()).decode()
+        import hashlib as _h
+        secret = _h.md5(ADMIN.encode()).hexdigest() if st.get("md5") else ADMIN
+        good = "Basic " + _b64.b64encode(f"admin:{secret}".encode()).decode()
         if self.headers.get("Cookie") != f"Authorization={good}" or not self.headers.get("Referer"):
             self.send_response(403); self.end_headers(); return
         types = urlparse(self.path).query.split("&")
@@ -731,3 +734,17 @@ def test_gdpr_status_fails_reads_directly():
         devs = d.get_clients()
     assert [(x.mac, x.name, x.ip) for x in devs] == [("aa:bb:cc:00:00:01", "Celu", "192.168.0.20")]
     assert devs[0].connection in ("2.4GHz", "5GHz")
+
+
+def test_wr840n_2018_firmware_login(wr840n):
+    """WR840N v6 build 2018: página con encrypt.js y contraseña en MD5 dentro de la cookie."""
+    _detect._cache.clear()
+    FakeWR840N.st.update(md5=True)
+    conn = service.Connection(wr840n, None, "admin", ADMIN)
+    nets = service.connect(conn)
+    assert conn.brand_key == "tplink" and nets[0].ssid == "Casa840"
+    assert any(x.name == "Vecino" for x in service.list_clients(conn))
+    _detect._cache.clear()
+    with pytest.raises(AuthError, match="Finalizar sesión"):
+        service.connect(service.Connection(wr840n, None, "admin", "mala"))
+    _detect._cache.clear()

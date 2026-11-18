@@ -16,6 +16,7 @@ de un TL-WR840N real:
 from __future__ import annotations
 
 import base64
+import hashlib
 import re
 
 import requests
@@ -59,12 +60,15 @@ def _band_of(item: dict) -> Band:
 
 class TPLinkCgiDriver(TPLinkDriver):
     """Mismo "TP-Link" para la app; distinta implementación por debajo."""
+    HASH_PASSWORD = False
 
     def __init__(self, *args, **kwargs):
         kwargs.pop("client", None)
         super().__init__(*args, **kwargs)
         self.session = requests.Session()
-        token = base64.b64encode(f"{self.username}:{self.admin_password}".encode()).decode()
+        secret = (hashlib.md5(self.admin_password.encode()).hexdigest() if self.HASH_PASSWORD
+                  else self.admin_password)
+        token = base64.b64encode(f"{self.username}:{secret}".encode()).decode()
         self.session.headers.update({
             "Referer": f"{self.host}/",
             "Cookie": f"Authorization=Basic {token}",
@@ -90,7 +94,9 @@ class TPLinkCgiDriver(TPLinkDriver):
         except (requests.ConnectionError, requests.Timeout):
             raise
         if r.status_code in (401, 403):
-            raise AuthError("El router rechazó la contraseña de administrador.")
+            raise AuthError("El router rechazó la contraseña de administrador. Si el panel está "
+                            "abierto en otro equipo o navegador, toca «Finalizar sesión» allí "
+                            "(estos TP-Link solo aceptan un administrador a la vez) y reintenta.")
         if r.status_code != 200:
             raise RouterError(f"El router respondió HTTP {r.status_code}.")
 
@@ -318,3 +324,8 @@ class TPLinkCgiDriver(TPLinkDriver):
                 if normalize_mac(_g(e, "MACAddress")) == device.mac]
         if acts:
             self._req(acts)
+
+
+class TPLinkCgiMd5Driver(TPLinkCgiDriver):
+    """Variante de algunos firmwares que esperan la contraseña en MD5 dentro de la cookie."""
+    HASH_PASSWORD = True

@@ -106,8 +106,41 @@ def get_driver(host: str | None, admin_password: str, brand: str | None = None,
             raise RouterError(f"No se reconoció la marca del router en {host}. Elige TP-Link o Tenda.")
         cls = DRIVERS[brand]
         if brand == "tplink":
-            from .drivers.tplink_cgi import TPLinkCgiDriver
-            if TPLinkCgiDriver.looks_like(html):
-                cls = TPLinkCgiDriver
+            # Los TP-Link tienen varias formas de acceso según el firmware (incluso del mismo
+            # modelo, p. ej. WR840N v6 de 2018 y de 2023): se prueba cuál acepta el login.
+            cls = _probe_tplink(host, admin_password, username, html, say)
         _cache[key] = cls
     return cls(host, admin_password, username=username)
+
+
+def _tplink_candidates(html: str) -> list[type[RouterDriver]]:
+    from .drivers.tplink_cgi import TPLinkCgiDriver, TPLinkCgiMd5Driver
+    page = html.lower()
+    cgi_family = TPLinkCgiDriver.looks_like(html) or "oid_str" in page
+    gdpr = re.search(r"rsa\.js|cgi_gdpr|/webpages/", page) is not None
+    if cgi_family and not gdpr:
+        return [TPLinkCgiDriver, TPLinkCgiMd5Driver, TPLinkDriver]
+    if cgi_family:
+        return [TPLinkDriver, TPLinkCgiDriver, TPLinkCgiMd5Driver]
+    return [TPLinkDriver]
+
+
+def _probe_tplink(host, admin_password, username, html, say) -> type[RouterDriver]:
+    candidates = _tplink_candidates(html)
+    if len(candidates) == 1:
+        return candidates[0]
+    first_error = None
+    for cls in candidates:
+        d = cls(host, admin_password, username=username)
+        try:
+            d.login()
+        except Exception as e:  # noqa: BLE001  probar la siguiente forma de acceso
+            first_error = first_error or e
+            continue
+        finally:
+            try:
+                d.logout()
+            except Exception:  # noqa: BLE001
+                pass
+        return cls
+    raise first_error
