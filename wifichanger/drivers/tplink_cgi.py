@@ -198,21 +198,52 @@ class TPLinkCgiDriver(TPLinkDriver):
             self._req(acts)  # una sola petición para todas las bandas
 
     # --- dispositivos -------------------------------------------------------
+    def _try_req(self, acts: list) -> list | None:
+        """Como _req, pero si el firmware no entiende alguna consulta devuelve None
+        (en vez de dejar toda la lista vacía por un solo objeto no soportado)."""
+        try:
+            return self._req(acts)
+        except AuthError:
+            raise
+        except (RouterError, requests.RequestException) as e:
+            self._last_error = e
+            return None
+
+    @staticmethod
+    def _wlan_on(w: dict) -> bool:
+        # Algunos firmwares (p. ej. WR840N v6 2023) no informan "Status": se usa "Enable".
+        status = str(_g(w, "Status")).lower()
+        return status == "up" or (status in ("", "none") and str(_g(w, "Enable")) == "1")
+
     def _snapshot(self):
-        hosts, wlans = self._req([
-            (GL, "LAN_HOST_ENTRY", None, None, ["leaseTimeRemaining", "MACAddress", "hostName", "IPAddress"]),
-            (GL, "LAN_WLAN", None, None, ["name", "SSID", "Status", "X_TP_Band",
-                                          "X_TP_MACAddressControlRule", "MACAddressControlEnabled"]),
-        ])
-        up = [w for w in wlans if str(_g(w, "Status")).lower() == "up"]
-        acts = []
-        for w in up:
-            acts.append((GS, "LAN_WLAN_ASSOC_DEV", None, w["__stack"],
-                         ["AssociatedDeviceMACAddress", "X_TP_HostName"]))
-            acts.append((GS, "LAN_WLAN_MACTABLEENTRY", None, w["__stack"],
-                         ["Enabled", "MACAddress", "Description", "HostName"]))
-        res = self._req(acts) if acts else []
-        per_wlan = [(w, res[2 * i], res[2 * i + 1]) for i, w in enumerate(up)]
+        self._last_error = None
+        res = self._try_req([(GL, "LAN_HOST_ENTRY", None, None,
+                              ["leaseTimeRemaining", "MACAddress", "hostName", "IPAddress"])])
+        hosts = res[0] if res else []
+        hosts_ok = res is not None
+        wlans = [w for w in self._wlans() if self._wlan_on(w)]
+        per_wlan, assoc_ok = [], False
+        for w in wlans:
+            assoc_act = (GS, "LAN_WLAN_ASSOC_DEV", None, w["__stack"],
+                         ["AssociatedDeviceMACAddress", "X_TP_HostName"])
+            table_act = (GS, "LAN_WLAN_MACTABLEENTRY", None, w["__stack"],
+                         ["Enabled", "MACAddress", "Description", "HostName"])
+            both = self._try_req([assoc_act, table_act])
+            if both is not None:
+                assoc, table = both
+            else:  # por separado: que la lista de bloqueo no impida ver los conectados
+                a = self._try_req([assoc_act])
+                if a is None:  # firmwares que no aceptan atributos sueltos: pedir todo
+                    a = self._try_req([(GS, "LAN_WLAN_ASSOC_DEV", None, w["__stack"], None)])
+                t = self._try_req([table_act])
+                assoc, table = (a[0] if a else []), (t[0] if t else [])
+                both = a
+            assoc_ok = assoc_ok or both is not None
+            per_wlan.append((w, assoc, table))
+        if not hosts_ok and not assoc_ok:
+            raise RouterError("Este router no entregó la lista de conectados"
+                              + (f" ({self._last_error})." if self._last_error else ".")
+                              + " Puedes verla en el panel del router (Estado / DHCP).")
         return hosts, per_wlan
 
     @staticmethod

@@ -442,8 +442,12 @@ class FakeWR840N(BaseHTTPRequestHandler):
             oid, stack, pstack, idx = m.group(1), m.group(2), m.group(3), m.group(4)
             attrs = dict(l.split("=", 1) for l in lines if "=" in l)
             st["log"].append((t, oid, stack, pstack, attrs))
+            if oid in st.get("reject", ()):
+                self.send_response(200); self.end_headers()
+                self.wfile.write(b"[error]9468"); return
             if t == "5" and oid == "LAN_WLAN":
-                out.append(f"[1,1,0,0,0,0]{idx}\nname=wlan0\nSSID=Casa840\nstatus=Up\nX_TP_Band=2.4GHz\n"
+                state = "Enable=1" if st.get("no_status") else "status=Up"
+                out.append(f"[1,1,0,0,0,0]{idx}\nname=wlan0\nSSID=Casa840\n{state}\nX_TP_Band=2.4GHz\n"
                            f"BeaconType={st['beacon']}\nX_TP_PreSharedKey={st['psk']}\nX_TP_MACAddressControlRule={st['rule']}\n"
                            f"MACAddressControlEnabled={st['acl_en']}")
                 out.append(f"[1,2,0,0,0,0]{idx}\nname=wlan5\nSSID=\nstatus=Disabled")
@@ -687,3 +691,43 @@ def test_download_id_varargs_like_pyjnius():
 
     _call_ids(varargs_method, 42)
     assert got == [[42]]
+
+
+def test_wr840n_v6_2023_clients(wr840n):
+    """WR840N v6 (firmware 2023): LAN_WLAN sin "Status" y sin lista de bloqueo legible."""
+    FakeWR840N.st.update(no_status=True, reject={"LAN_WLAN_MACTABLEENTRY"})
+    conn = service.Connection(wr840n, "tplink", "admin", ADMIN)
+    devs = {x.mac: x for x in service.list_clients(conn)}
+    assert devs["bb:bb:bb:bb:bb:02"].connection == "2.4GHz"
+    assert devs["aa:aa:aa:aa:aa:01"].name == "Telefono"
+
+
+def test_wr840n_no_dhcp_still_lists_wifi(wr840n):
+    FakeWR840N.st.update(reject={"LAN_HOST_ENTRY"})
+    conn = service.Connection(wr840n, "tplink", "admin", ADMIN)
+    assert [x.mac for x in service.list_clients(conn)] == ["bb:bb:bb:bb:bb:02"]
+
+
+def test_wr840n_nothing_readable_gives_message(wr840n):
+    FakeWR840N.st.update(reject={"LAN_HOST_ENTRY", "LAN_WLAN_ASSOC_DEV"})
+    conn = service.Connection(wr840n, "tplink", "admin", ADMIN)
+    with pytest.raises(RouterError, match="panel del router"):
+        service.list_clients(conn)
+
+
+def test_gdpr_status_fails_reads_directly():
+    class Broken(FakeGdpr):
+        def get_status(self):
+            raise ValueError("respuesta inesperada")
+
+        def req_act(self, acts):
+            a = acts[0]
+            if a.oid == "LAN_HOST_ENTRY":
+                return "", [{"IPAddress": "192.168.0.20", "MACAddress": "AA-BB-CC-00-00-01", "hostName": "Celu"}]
+            if a.oid == "LAN_WLAN_ASSOC_DEV":
+                return "", [{"AssociatedDeviceMACAddress": "AA:BB:CC:00:00:01"}]
+            return super().req_act(acts)
+    with tplink_mod.TPLinkDriver("192.168.0.1", ADMIN, client=Broken()) as d:
+        devs = d.get_clients()
+    assert [(x.mac, x.name, x.ip) for x in devs] == [("aa:bb:cc:00:00:01", "Celu", "192.168.0.20")]
+    assert devs[0].connection in ("2.4GHz", "5GHz")

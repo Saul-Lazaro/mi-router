@@ -274,14 +274,66 @@ class TPLinkDriver(RouterDriver):
                 return []
         raise NotSupportedError(f"No se pudo leer la lista de bloqueados: {last_error}")
 
+    def _gdpr_raw_clients(self) -> list[ClientDevice]:
+        """Lectura directa (DHCP + asociados por banda) para firmwares cgi_gdpr donde
+        get_status() de la librería falla o viene vacío (p. ej. WR840N v6 de 2023)."""
+        act = self._client.ActItem
+        out: dict[str, ClientDevice] = {}
+        errors = []
+        try:
+            _, hosts = self._client.req_act([act(act.GL, "LAN_HOST_ENTRY",
+                                                 attrs=["IPAddress", "MACAddress", "hostName"])])
+            for h in (hosts if isinstance(hosts, list) else [hosts]):
+                if isinstance(h, dict) and normalize_mac(h.get("MACAddress", "")):
+                    mac = normalize_mac(h["MACAddress"])
+                    out[mac] = ClientDevice(mac, h.get("IPAddress", ""), h.get("hostName", ""),
+                                            "Cable/inactivo")
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+        for band, stack in self.WLAN_STACK.items():
+            try:
+                _, assoc = self._client.req_act([act(act.GS, "LAN_WLAN_ASSOC_DEV", "0,0,0,0,0,0", stack,
+                                                     attrs=["AssociatedDeviceMACAddress"])])
+            except Exception as e:  # noqa: BLE001  (p. ej. el modelo no tiene 5 GHz)
+                errors.append(e)
+                continue
+            for a in (assoc if isinstance(assoc, list) else [assoc]):
+                mac = normalize_mac(a.get("AssociatedDeviceMACAddress", "")) if isinstance(a, dict) else ""
+                if mac:
+                    out.setdefault(mac, ClientDevice(mac, "", "", band.value)).connection = band.value
+        if not out and len(errors) == 1 + len(self.WLAN_STACK):
+            raise RouterError(f"Este router no entregó la lista de conectados ({errors[0]}).")
+        return list(out.values())
+
     def get_clients(self) -> list[ClientDevice]:
         my_ip = local_ip_for(self.host)
         devices: dict[str, ClientDevice] = {}
-        status = self._client.get_status()
+        status_error = None
+        try:
+            status = self._client.get_status()
+        except Exception as e:  # noqa: BLE001
+            if not self._is_gdpr():
+                raise
+            status, status_error = None, e
         for dev in getattr(status, "devices", []) or []:
             d = ClientDevice(dev.macaddr, dev.ipaddr, dev.hostname or "", self._conn_label(dev.type))
-            d.is_self = bool(my_ip) and d.ip == my_ip
             devices[d.mac] = d
+        if self._is_gdpr():
+            try:
+                for d in self._gdpr_raw_clients():
+                    known = devices.get(d.mac)
+                    if known is None:
+                        devices[d.mac] = d
+                    else:  # completar lo que falte
+                        known.ip = known.ip or d.ip
+                        known.name = known.name or d.name
+                        if d.connection != "Cable/inactivo" and not known.connection:
+                            known.connection = d.connection
+            except RouterError:
+                if status_error is not None:
+                    raise RouterError(f"No se pudo leer la lista de conectados: {status_error}")
+        for d in devices.values():
+            d.is_self = bool(my_ip) and d.ip == my_ip
         try:
             black = self._blacklist()
         except NotSupportedError:
