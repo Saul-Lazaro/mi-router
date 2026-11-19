@@ -748,3 +748,29 @@ def test_wr840n_2018_firmware_login(wr840n):
     with pytest.raises(AuthError, match="Finalizar sesión"):
         service.connect(service.Connection(wr840n, None, "admin", "mala"))
     _detect._cache.clear()
+
+
+def test_provider_client_is_authorized(monkeypatch):
+    """La librería nueva solo elige el cliente en get_client(); la app debe hacer authorize()."""
+    calls = []
+
+    class Client:
+        def authorize(self):
+            calls.append("authorize")
+
+        def logout(self): pass
+
+    class Provider:
+        @staticmethod
+        def get_client(host, password, username, timeout=30):
+            return Client()
+
+    class Lib:  # sin TPLinkWR841NClient/TPLinkC50Client
+        pass
+
+    monkeypatch.setattr(tplink_mod, "tplinkrouterc6u", Lib)
+    monkeypatch.setattr(tplink_mod, "TplinkRouterProvider", Provider)
+    d = tplink_mod.TPLinkDriver("192.168.0.1", ADMIN)
+    monkeypatch.setattr(d, "_homepage", lambda: "<html>/webpages/index.html</html>")
+    d.login()
+    assert calls == ["authorize"] and isinstance(d._client, Client)

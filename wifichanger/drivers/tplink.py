@@ -104,9 +104,12 @@ class TPLinkDriver(RouterDriver):
             if self._client is not None:
                 return
         try:
-            # el provider ya hace login al elegir el cliente
-            self._client = TplinkRouterProvider.get_client(
+            client = TplinkRouterProvider.get_client(
                 self.host, self.admin_password, self.username, timeout=self.timeout)
+            # Desde la versión 5.3x de la librería, get_client() solo ELIGE el cliente y ya no
+            # inicia sesión: hay que llamar a authorize() (antes daba "contraseña incorrecta").
+            client.authorize()
+            self._client = client
         except Exception as e:  # el provider lanza si ningún cliente encaja
             raise AuthError("No se pudo iniciar sesión en el TP-Link. Revisa la contraseña de "
                             f"administrador (la misma del panel web). Detalle: {e}") from e

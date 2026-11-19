@@ -129,13 +129,13 @@ def _probe_tplink(host, admin_password, username, html, say) -> type[RouterDrive
     candidates = _tplink_candidates(html)
     if len(candidates) == 1:
         return candidates[0]
-    first_error = None
+    errors = []
     for cls in candidates:
         d = cls(host, admin_password, username=username)
         try:
             d.login()
         except Exception as e:  # noqa: BLE001  probar la siguiente forma de acceso
-            first_error = first_error or e
+            errors.append(e)
             continue
         finally:
             try:
@@ -143,4 +143,10 @@ def _probe_tplink(host, admin_password, username, html, say) -> type[RouterDrive
             except Exception:  # noqa: BLE001
                 pass
         return cls
-    raise first_error
+    # Ninguna forma de acceso funcionó: se muestra el error principal y, abajo, el detalle de
+    # la librería (sirve para saber qué falla en un modelo nuevo).
+    main = errors[0]
+    detail = next((str(e) for e in reversed(errors) if "Detalle:" in str(e)), "")
+    if detail and detail not in str(main):
+        raise type(main)(f"{main}\n\n{detail[detail.index('Detalle:'):]}") from main
+    raise main
