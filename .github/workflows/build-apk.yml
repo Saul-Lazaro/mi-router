@@ -63,8 +63,24 @@ jobs:
           mkdir -p ~/.android
           cp .github/keystore/debug.keystore ~/.android/debug.keystore
 
+      # La caché reutiliza el "dist" ya armado y NO reinstala las librerías puras de Python
+      # (p. ej. tplinkrouterc6u) aunque cambie su versión en buildozer.spec: se borran para
+      # que se instalen otra vez con la versión fijada (lo compilado, como Kivy, se conserva).
+      - name: Reinstalar librerías Python puras
+        run: |
+          rm -rf .buildozer/android/platform/build-*/dists \
+                 .buildozer/android/platform/build-*/build/python-installs \
+                 .buildozer/android/platform/build-*/build/bootstrap_builds \
+                 .buildozer/android/platform/build-*/build/other_builds/tplinkrouterc6u* || true
+
       - name: Compilar APK (debug)
         run: buildozer android debug
+
+      - name: Versión de la librería TP-Link incluida
+        run: |
+          ls -d .buildozer/android/platform/build-*/build/python-installs/*/*/tplinkrouterc6u-*.dist-info \
+                .buildozer/android/platform/build-*/build/python-installs/*/tplinkrouterc6u-*.dist-info 2>/dev/null || true
+          find .buildozer/android/platform -path "*python-installs*" -name "tplinkrouterc6u-*" -maxdepth 8 | head -5
 
       # Re-firma SIEMPRE con la llave fija del repositorio: así cada versión se instala
       # encima de la anterior (Buildozer firma con una llave propia que puede cambiar).
