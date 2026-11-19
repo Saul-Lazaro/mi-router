@@ -873,7 +873,10 @@ class Root(BoxLayout):
             except (RouterError, ValueError) as e:
                 self._done(None, str(e))
             except Exception as e:  # red caída, timeout, respuesta inesperada
-                self._done(None, f"No se pudo comunicar con el router: {e}")
+                detail = " ".join(str(e).split())
+                if len(detail) > 220:  # la librería TP-Link incluye la petición entera
+                    detail = detail[:220] + "…"
+                self._done(None, f"No se pudo comunicar con el router: {detail}")
             else:
                 self._done(lambda: on_ok(result), None)
 

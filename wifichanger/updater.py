@@ -5,9 +5,9 @@ API pública (no requiere iniciar sesión):
       -> {"disponible": bool, "version": "x.y.z", "hay_nueva": bool, "obligatoria": bool,
           "notas": str|null, "tamano": bytes, "sha256": hex, "fecha": iso, "url": ".../descargar"}
 
-Android: la descarga la hace el DownloadManager del sistema (progreso consultable, sin
-permisos de almacenamiento) en la carpeta privada de la app; se verifica el SHA-256 y se abre
-el instalador de Android con un content:// URI. Escritorio: descarga con requests.
+Android y escritorio: la app descarga el APK con requests (progreso propio) en su carpeta
+privada y verifica el SHA-256. En Android el archivo se registra en el DownloadManager solo para
+obtener un content:// URI y abrir el instalador.
 """
 from __future__ import annotations
 
@@ -84,8 +84,8 @@ def download_desktop(info: dict, on_progress, on_done, on_error, folder: str | N
 
 # ---------------------------------------------------------------- Android
 def _call_ids(method, download_id):
-    """Métodos Java `long...` (setFilterById, remove): pyjnius ya arma el arreglo con los
-    argumentos sueltos; pasar una lista lo anida y da «an integer is required»."""
+    """Métodos Java `long...` (p. ej. DownloadManager.remove): pyjnius ya arma el arreglo con
+    los argumentos sueltos; pasar una lista lo anida y da «an integer is required»."""
     try:
         return method(int(download_id))
     except TypeError:
@@ -93,61 +93,94 @@ def _call_ids(method, download_id):
 
 
 class AndroidDownload:
-    """DownloadManager del sistema. `poll()` se llama desde la UI (Clock) cada ~0.5 s y
-    devuelve ("running", hecho, total) | ("done", ruta, uri) | ("error", mensaje, None)."""
+    """Descarga hecha por la propia app (requests, en un hilo) a su carpeta privada.
+
+    Antes se usaba el DownloadManager del sistema, pero en algunos celulares la descarga se
+    quedaba «en espera» en 0 % para siempre (red sin internet validada, ahorro de datos,
+    restricciones del fabricante). Ahora la app descarga sola, como en escritorio, y al
+    terminar registra el archivo en el DownloadManager solo para obtener un content:// URI
+    que el instalador de Android pueda abrir.
+
+    `poll()` se llama desde la UI (Clock) cada ~0.5 s y devuelve
+    ("running", hecho, total) | ("done", ruta, uri) | ("error", mensaje, None)."""
 
     def __init__(self, info: dict):
-        from jnius import autoclass, cast
+        from jnius import autoclass
         self.info = info
         self.activity = autoclass("org.kivy.android.PythonActivity").mActivity
-        Context = autoclass("android.content.Context")
         Environment = autoclass("android.os.Environment")
-        self.DM = autoclass("android.app.DownloadManager")
-        self.dm = cast("android.app.DownloadManager", self.activity.getSystemService(Context.DOWNLOAD_SERVICE))
-        name = apk_name(info)
         folder = self.activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-        self.path = os.path.join(folder.getAbsolutePath(), name)
-        if os.path.exists(self.path):
-            os.remove(self.path)
-        Uri = autoclass("android.net.Uri")
-        Request = autoclass("android.app.DownloadManager$Request")
-        req = Request(Uri.parse(info["url"]))
-        # setTitle/setDescription reciben CharSequence: pyjnius no convierte str solo
-        String = autoclass("java.lang.String")
-        req.setTitle(cast("java.lang.CharSequence", String(f"Maxs Wifi {info.get('version', '')}")))
-        req.setDescription(cast("java.lang.CharSequence", String("Descargando actualización")))
-        req.setMimeType(APK_MIME)
-        req.setNotificationVisibility(Request.VISIBILITY_VISIBLE)
-        req.setDestinationInExternalFilesDir(self.activity, Environment.DIRECTORY_DOWNLOADS, name)
-        self.id = self.dm.enqueue(req)
+        os.makedirs(folder.getAbsolutePath(), exist_ok=True)
+        self.path = os.path.join(folder.getAbsolutePath(), apk_name(info))
+        self.done, self.total = 0, int(info.get("tamano") or 0)
+        self.state, self.error, self.uri = "running", "", None
+        self._cancel = False
+        threading.Thread(target=self._work, daemon=True).start()
+
+    def _work(self):
+        tmp = self.path + ".part"
+        try:
+            with requests.get(self.info["url"], stream=True, timeout=(15, 60)) as r:
+                r.raise_for_status()
+                self.total = int(r.headers.get("content-length") or self.total or 0)
+                with open(tmp, "wb") as fh:
+                    for chunk in r.iter_content(256 * 1024):
+                        if self._cancel:
+                            raise InterruptedError("cancelada")
+                        fh.write(chunk)
+                        self.done += len(chunk)
+            expected = str(self.info.get("sha256") or "").lower()
+            if expected and sha256_file(tmp).lower() != expected:
+                raise ValueError("El archivo descargado está dañado (la verificación no coincide). "
+                                 "Inténtalo de nuevo.")
+            os.replace(tmp, self.path)
+            self.state = "downloaded"
+        except InterruptedError:
+            self.state = "cancelled"
+        except requests.RequestException:
+            self.state, self.error = "error", ("No se pudo descargar la actualización. Revisa que el "
+                                               "celular tenga internet (datos o un Wi‑Fi con internet).")
+        except Exception as e:  # noqa: BLE001
+            self.state, self.error = "error", str(e)
+        finally:
+            if self.state != "downloaded" and os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+
+    def _register(self):
+        """content:// URI para el instalador (se hace en el hilo de la UI)."""
+        from jnius import autoclass, cast
+        Context = autoclass("android.content.Context")
+        dm = cast("android.app.DownloadManager",
+                  self.activity.getSystemService(Context.DOWNLOAD_SERVICE))
+        dl_id = dm.addCompletedDownload(f"Maxs Wifi {self.info.get('version', '')}",
+                                        "Actualización descargada", False, APK_MIME, self.path,
+                                        os.path.getsize(self.path), True)
+        return dm.getUriForDownloadedFile(dl_id)
 
     def poll(self):
-        q = __import__("jnius").autoclass("android.app.DownloadManager$Query")()
-        _call_ids(q.setFilterById, self.id)
-        c = self.dm.query(q)
-        try:
-            if not c.moveToFirst():
-                return ("error", "La descarga se canceló.", None)
-            status = c.getInt(c.getColumnIndex(self.DM.COLUMN_STATUS))
-            done = c.getLong(c.getColumnIndex(self.DM.COLUMN_BYTES_DOWNLOADED_SO_FAR))
-            total = c.getLong(c.getColumnIndex(self.DM.COLUMN_TOTAL_SIZE_BYTES))
-        finally:
-            c.close()
-        if status == self.DM.STATUS_SUCCESSFUL:
-            expected = str(self.info.get("sha256") or "").lower()
-            if expected and sha256_file(self.path).lower() != expected:
-                return ("error", "El archivo descargado está dañado (la verificación no coincide). "
-                                 "Inténtalo de nuevo.", None)
-            return ("done", self.path, self.dm.getUriForDownloadedFile(self.id))
-        if status == self.DM.STATUS_FAILED:
-            return ("error", "No se pudo descargar la actualización. Revisa tu conexión.", None)
-        return ("running", done, total if total > 0 else int(self.info.get("tamano") or 0))
+        if self.state == "running":
+            return ("running", self.done, self.total)
+        if self.state == "downloaded":
+            try:
+                self.uri = self._register()
+            except Exception as e:  # noqa: BLE001
+                self.state, self.error = "error", f"No se pudo preparar el instalador: {e}"
+            else:
+                if self.uri is None:
+                    self.state, self.error = "error", "No se pudo preparar el instalador."
+                else:
+                    self.state = "done"
+        if self.state == "done":
+            return ("done", self.path, self.uri)
+        if self.state == "cancelled":
+            return ("error", "La descarga se canceló.", None)
+        return ("error", self.error or "No se pudo descargar la actualización.", None)
 
     def cancel(self):
-        try:
-            _call_ids(self.dm.remove, self.id)
-        except Exception:  # noqa: BLE001
-            pass
+        self._cancel = True
 
 
 def can_install_android() -> bool:

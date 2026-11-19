@@ -43,6 +43,12 @@ def _load_lib() -> None:
     TplinkRouterProvider = lib.TplinkRouterProvider
 
 
+def _short(e, limit: int = 160) -> str:
+    """Errores de la librería traen la petición entera: se recorta para mostrarlos."""
+    text = " ".join(str(e).split())
+    return text if len(text) <= limit else text[:limit] + "…"
+
+
 def _connection_for(band: Band, guest: bool):
     prefix = "GUEST" if guest else "HOST"
     suffix = {Band.B24: "2G", Band.B5: "5G", Band.B6: "6G"}[band]
@@ -70,8 +76,19 @@ class TPLinkDriver(RouterDriver):
             raise RouterError(f"No se pudo conectar con {self.host}: {e}") from e
         return r.text.lower() + " " + r.headers.get("WWW-Authenticate", "").lower()
 
-    def _gdpr_client(self):
-        """WR840N v6+, WR841N v14, WR844N, C50…: login /cgi/login + /cgi_gdpr."""
+    def _usable(self, client) -> bool:
+        """¿El cliente elegido de verdad lee el router? Algunos clientes de la librería
+        (p. ej. «C3200») «inician sesión» sin comprobar nada y luego todo da HTTP 500."""
+        if not (hasattr(client, "req_act") and hasattr(client, "ActItem")):
+            return True  # firmware luci (Archer): no hay lectura simple para comprobar
+        previous, self._client = self._client, client
+        try:
+            return bool(self._gdpr_networks())
+        finally:
+            self._client = previous
+
+    def _gdpr_client(self, errors: list):
+        """WR840N v6+, WR841N v14, WR850N v3, WR844N, C50…: login /cgi_gdpr cifrado."""
         for name in ("TPLinkWR841NClient", "TPLinkC50Client"):
             cls = getattr(tplinkrouterc6u, name, None) if tplinkrouterc6u else None
             if cls is None:
@@ -79,9 +96,11 @@ class TPLinkDriver(RouterDriver):
             client = cls(self.host, self.admin_password, self.username, timeout=self.timeout)
             try:
                 client.authorize()
-                return client
-            except Exception:
-                continue
+                if self._usable(client):
+                    return client
+                errors.append(f"{name}: sesión iniciada pero no se pudieron leer las redes")
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"{name}: {_short(e)}")
         return None
 
     def login(self) -> None:
@@ -89,7 +108,7 @@ class TPLinkDriver(RouterDriver):
             try:
                 self._client.authorize()
             except Exception as e:
-                raise AuthError(f"Login rechazado por el router: {e}") from e
+                raise AuthError(f"Login rechazado por el router: {_short(e)}") from e
             return
         page = self._homepage()
         if "userrpm" in page or "loginrpm" in page or 'basic realm="tp-link' in page:
@@ -99,20 +118,27 @@ class TPLinkDriver(RouterDriver):
         _load_lib()
         if TplinkRouterProvider is None:
             raise RouterError("Falta la dependencia: pip install tplinkrouterc6u")
+        errors: list[str] = []
         if "/webpages/" not in page:  # "/webpages/" = firmware luci moderno (Archer C6/AX…)
-            self._client = self._gdpr_client()
-            if self._client is not None:
+            client = self._gdpr_client(errors)
+            if client is not None:
+                self._client = client
                 return
         try:
             client = TplinkRouterProvider.get_client(
                 self.host, self.admin_password, self.username, timeout=self.timeout)
             # Desde la versión 5.3x de la librería, get_client() solo ELIGE el cliente y ya no
-            # inicia sesión: hay que llamar a authorize() (antes daba "contraseña incorrecta").
+            # inicia sesión: hay que llamar a authorize().
             client.authorize()
+            if not self._usable(client):
+                raise RouterError(f"{type(client).__name__}: sesión iniciada pero no se pudieron "
+                                  "leer las redes")
             self._client = client
         except Exception as e:  # el provider lanza si ningún cliente encaja
+            errors.append(_short(e))
             raise AuthError("No se pudo iniciar sesión en el TP-Link. Revisa la contraseña de "
-                            f"administrador (la misma del panel web). Detalle: {e}") from e
+                            "administrador (la misma del panel web) y cierra el panel si está "
+                            "abierto en otro equipo. Detalle: " + " | ".join(errors)) from e
 
     def logout(self) -> None:
         if self._client is not None:
@@ -176,6 +202,8 @@ class TPLinkDriver(RouterDriver):
                                             st.encryption or "", guest, password=getattr(st, "psk_key", None)))
             if nets:
                 return nets
+        if self._is_gdpr():
+            raise RouterError("El router no entregó sus redes Wi‑Fi. Usa «Abrir panel del router».")
         # Modelos sin get_wifi: solo sabemos si cada banda está activa.
         status = self._client.get_status()
         for band, attr in ((Band.B24, "wifi_2g_enable"), (Band.B5, "wifi_5g_enable"),

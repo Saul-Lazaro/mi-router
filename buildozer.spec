@@ -16,7 +16,7 @@ android.presplash_color = #FFFFFF
 
 # Dependencias que python-for-android empaqueta dentro del APK.
 # pycryptodome tiene receta nativa en p4a (la necesita el login cifrado de TP-Link).
-requirements = python3,kivy,pyjnius,android,requests,urllib3,idna,certifi,charset-normalizer,pycryptodome,macaddress,tplinkrouterc6u
+requirements = python3,kivy,pyjnius,android,requests,urllib3,idna,certifi,charset-normalizer,pycryptodome,macaddress,tplinkrouterc6u==5.41.0
 
 orientation = portrait
 fullscreen = 0

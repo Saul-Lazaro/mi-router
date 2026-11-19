@@ -774,3 +774,71 @@ def test_provider_client_is_authorized(monkeypatch):
     monkeypatch.setattr(d, "_homepage", lambda: "<html>/webpages/index.html</html>")
     d.login()
     assert calls == ["authorize"] and isinstance(d._client, Client)
+
+
+def test_android_download_worker(tmp_path):
+    """La descarga de Android la hace la app (sin DownloadManager): progreso y verificación."""
+    import hashlib
+    from wifichanger import updater
+    data = b"APK" * 50000
+
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+    srv = HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        def make(sha):
+            dl = object.__new__(updater.AndroidDownload)
+            dl.info = {"url": f"http://127.0.0.1:{srv.server_port}/apk", "sha256": sha, "version": "9.9.9"}
+            dl.path = str(tmp_path / "MaxsWifi-9.9.9.apk")
+            dl.done, dl.total, dl.state, dl.error, dl.uri, dl._cancel = 0, 0, "running", "", None, False
+            return dl
+        ok = make(hashlib.sha256(data).hexdigest())
+        ok._work()
+        assert ok.state == "downloaded" and ok.done == ok.total == len(data)
+        assert (tmp_path / "MaxsWifi-9.9.9.apk").read_bytes() == data
+        bad = make("00" * 32)
+        bad._work()
+        assert bad.poll()[0] == "error" and "dañado" in bad.poll()[1]
+        assert not list(tmp_path.glob("*.part"))
+    finally:
+        srv.shutdown()
+
+
+def test_provider_fake_login_rejected(monkeypatch):
+    """Un cliente que «inicia sesión» pero no lee nada (C3200 en un WR850N) no se acepta."""
+    class Act:
+        GL, SET = 5, 2
+
+        def __init__(self, *a, **k): pass
+
+    class C3200:
+        ActItem = Act
+
+        def authorize(self): pass
+        def logout(self): pass
+
+        def req_act(self, acts):
+            raise RuntimeError("TP Link Router C3200 - Response with error; Request " + "x" * 500)
+
+    class Provider:
+        @staticmethod
+        def get_client(host, password, username, timeout=30):
+            return C3200()
+
+    class Lib:
+        pass
+
+    monkeypatch.setattr(tplink_mod, "tplinkrouterc6u", Lib)
+    monkeypatch.setattr(tplink_mod, "TplinkRouterProvider", Provider)
+    d = tplink_mod.TPLinkDriver("192.168.0.1", ADMIN)
+    monkeypatch.setattr(d, "_homepage", lambda: "<html></html>")
+    with pytest.raises(AuthError) as err:
+        d.login()
+    assert "C3200" in str(err.value) and len(str(err.value)) < 600
