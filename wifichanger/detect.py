@@ -145,8 +145,11 @@ def _probe_tplink(host, admin_password, username, html, say) -> type[RouterDrive
         return cls
     # Ninguna forma de acceso funcionó: se muestra el error principal y, abajo, el detalle de
     # la librería (sirve para saber qué falla en un modelo nuevo).
-    main = errors[0]
-    detail = next((str(e) for e in reversed(errors) if "Detalle:" in str(e)), "")
-    if detail and detail not in str(main):
-        raise type(main)(f"{main}\n\n{detail[detail.index('Detalle:'):]}") from main
-    raise main
+    # Un login rechazado de verdad (401/403) manda; si no, el error con «Detalle:» (el de la
+    # librería, que dice qué forma de acceso falló y por qué) es más útil que un «HTTP 500».
+    from .base import AuthError
+    rejected = next((e for e in errors if isinstance(e, AuthError) and "rechazó" in str(e)), None)
+    if rejected is not None:
+        raise rejected
+    detailed = next((e for e in reversed(errors) if "Detalle:" in str(e)), None)
+    raise detailed or errors[0]

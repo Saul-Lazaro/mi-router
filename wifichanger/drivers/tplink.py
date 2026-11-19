@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
+import types
 from urllib.parse import quote
 
 from ..base import (AuthError, Band, ClientDevice, NotSupportedError, RouterDriver, RouterError,
@@ -41,6 +43,29 @@ def _load_lib() -> None:
     if Connection is None:
         Connection = lib.Connection
     TplinkRouterProvider = lib.TplinkRouterProvider
+
+
+def _tolerant_rsa_key(self):
+    """Reemplazo de _fetch_rsa_key de la librería (WR841N/C50): acepta espacios, comillas
+    simples o ninguna, y prueba POST y GET. Algunos firmwares (p. ej. WR850N v3) no
+    responden exactamente `var ee="...";` y la librería fallaba con 'NoneType … group'.
+    Si aun así falla, el error incluye lo que respondió el router (para diagnosticar)."""
+    last = "sin respuesta"
+    for method in ("post", "get"):
+        try:
+            r = getattr(self._session, method)(f"{self.host}/cgi/getParm",
+                                               headers=self._base_headers(), timeout=self.timeout)
+        except Exception as e:  # noqa: BLE001
+            last = _short(e, 80)
+            continue
+        text = r.text or ""
+        ee = re.search(r"\bee\s*=\s*[\"']?([0-9a-fA-F]+)", text)
+        nn = re.search(r"\bnn\s*=\s*[\"']?([0-9a-fA-F]+)", text)
+        seq = re.search(r"\bseq\s*=\s*[\"']?(\d+)", text)
+        if ee and nn and seq:
+            return nn.group(1), ee.group(1), int(seq.group(1))
+        last = f"{method.upper()} /cgi/getParm → HTTP {r.status_code} «{_short(text, 70)}»"
+    raise RouterError(f"no entregó la llave de cifrado ({last})")
 
 
 def _short(e, limit: int = 160) -> str:
@@ -94,6 +119,8 @@ class TPLinkDriver(RouterDriver):
             if cls is None:
                 continue
             client = cls(self.host, self.admin_password, self.username, timeout=self.timeout)
+            if hasattr(client, "_fetch_rsa_key"):
+                client._fetch_rsa_key = types.MethodType(_tolerant_rsa_key, client)
             try:
                 client.authorize()
                 if self._usable(client):

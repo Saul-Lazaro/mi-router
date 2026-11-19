@@ -842,3 +842,30 @@ def test_provider_fake_login_rejected(monkeypatch):
     with pytest.raises(AuthError) as err:
         d.login()
     assert "C3200" in str(err.value) and len(str(err.value)) < 600
+
+
+def test_tolerant_rsa_key_formats():
+    from wifichanger.drivers.tplink import _tolerant_rsa_key
+
+    class R:
+        def __init__(self, text, code=200):
+            self.text, self.status_code = text, code
+
+    class Sess:
+        def __init__(self, post, get):
+            self._p, self._g = post, get
+        def post(self, *a, **k): return self._p
+        def get(self, *a, **k): return self._g
+
+    class C:
+        host, timeout = "http://192.168.0.1", 5
+        def _base_headers(self): return {}
+
+    c = C()
+    c._session = Sess(R("[cgi]0\nvar ee = '010001';\nvar nn = 'C0FFEE';\nvar seq = '123';\n$.ret=0;"), None)
+    assert _tolerant_rsa_key(c) == ("C0FFEE", "010001", 123)
+    c._session = Sess(R("<html>500</html>", 500), R('var ee="03";var nn="AB";var seq="7";'))
+    assert _tolerant_rsa_key(c) == ("AB", "03", 7)
+    c._session = Sess(R("<html>500</html>", 500), R("nada", 404))
+    with pytest.raises(RouterError, match="HTTP 404"):
+        _tolerant_rsa_key(c)
